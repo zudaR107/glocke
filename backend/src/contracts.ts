@@ -8,11 +8,13 @@ export interface EventEnvelope {
   payload: EventPayload
 }
 
+// Shape varies per registered event type (see event-registry.ts) - only
+// recipientId is common to all of them. Producers can never supply
+// title/body/actionUrl; every payload schema in the registry is
+// `.strict()` and rejects them outright.
 export interface EventPayload {
   recipientId: string
-  title?: string
-  body?: string
-  actionUrl?: string
+  [key: string]: unknown
 }
 
 export interface InboxRecord {

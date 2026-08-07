@@ -125,6 +125,26 @@ seconds.
 
 `schlussel.security.password_changed.v1` deliberately carries only `recipientId`. Glocke owns its Russian title, body, and account-settings action. Intake never calls Schlüssel: recipient existence and the current `notifyInApp` preference are resolved only after a durable inbox claim. A missing recipient is durably suppressed and marked processed.
 
+### Event registry
+
+`src/event-registry.ts` is the single source of truth for every `(source, type)`
+pair this deployment accepts: it drives payload validation at intake, Russian
+rendering at processing, the four `oneOf` request-body contracts in
+`GET /openapi.json`, and (via `GLOCKE_EVENT_SOURCES`) which producer secrets
+`loadConfig` will even accept. There is no producer-rendered fallback — an
+envelope whose type isn't registered, or whose source doesn't own that type,
+is rejected with `400` before its payload is even looked at, and a payload
+carrying `title`/`body`/`actionUrl` is always rejected (every payload schema
+is `.strict()`; presentation is Glocke's alone). The four currently
+registered events:
+
+| Type | Source | Payload | Rendered action |
+|---|---|---|---|
+| `schlussel.security.password_changed.v1` | `schlussel` | `recipientId` | `/settings` |
+| `kuvert.goal.completed.v1` | `kuvert` | `recipientId`, `goalName` | `/goals` |
+| `tafel.task.due.v1` | `tafel` | `recipientId`, `taskTitle`, `dueDate`, `overdue` | `/tasks` |
+| `zettel.note.backlink_added.v1` | `zettel` | `recipientId`, `sourceTitle`, `targetTitle` | none |
+
 ## Local development
 
 ```sh
@@ -147,9 +167,15 @@ export SCHLUSSEL_JWKS_URL=http://localhost:4000/.well-known/jwks.json
 export SCHLUSSEL_INTERNAL_URL=http://localhost:4000
 export JWT_ISSUER=schlussel
 export ALLOWED_ORIGINS=http://localhost:5177
-export GLOCKE_EVENT_SOURCES=schlussel
+export GLOCKE_EVENT_SOURCES=schlussel,kuvert,tafel,zettel
 export GLOCKE_SOURCE_KEY_ID_SCHLUSSEL=schlussel-v1
 export GLOCKE_SOURCE_SECRET_SCHLUSSEL='<same value as Schlussel SCHLUSSEL_TO_GLOCKE_HMAC_SECRET>'
+export GLOCKE_SOURCE_KEY_ID_KUVERT=kuvert-v1
+export GLOCKE_SOURCE_SECRET_KUVERT='<same value as Kuvert KUVERT_TO_GLOCKE_HMAC_SECRET>'
+export GLOCKE_SOURCE_KEY_ID_TAFEL=tafel-v1
+export GLOCKE_SOURCE_SECRET_TAFEL='<same value as Tafel TAFEL_TO_GLOCKE_HMAC_SECRET>'
+export GLOCKE_SOURCE_KEY_ID_ZETTEL=zettel-v1
+export GLOCKE_SOURCE_SECRET_ZETTEL='<same value as Zettel ZETTEL_TO_GLOCKE_HMAC_SECRET>'
 export GLOCKE_TO_SCHLUSSEL_HMAC_KEY_ID=glocke-v1
 export GLOCKE_TO_SCHLUSSEL_HMAC_SECRET='<same value accepted by Schlussel>'
 pnpm dev:backend
@@ -188,10 +214,13 @@ Never reuse one direction's value for the other, commit `.env`, or paste
 secrets/signatures into issues or logs. Glocke requires every secret to be at
 least 32 bytes and rejects duplicate configured secrets at startup.
 
-To add a future producer, add its lowercase name to `GLOCKE_EVENT_SOURCES`,
-configure its generated `GLOCKE_SOURCE_KEY_ID_<SOURCE>` and
-`GLOCKE_SOURCE_SECRET_<SOURCE>` runtime variables (and matching Compose
-substitutions), then configure the same key ID and secret in that producer.
+To add a future producer, first register its event type(s) in
+`src/event-registry.ts` (source, payload schema, Russian rendering) — `loadConfig`
+rejects any name in `GLOCKE_EVENT_SOURCES` that the registry doesn't recognize.
+Then add its lowercase source name to `GLOCKE_EVENT_SOURCES`, configure its
+generated `GLOCKE_SOURCE_KEY_ID_<SOURCE>` and `GLOCKE_SOURCE_SECRET_<SOURCE>`
+runtime variables (and matching Compose substitutions), then configure the
+same key ID and secret in that producer.
 
 ## Docker and Tor
 
@@ -247,17 +276,16 @@ git diff --check
 
 ## Roadmap
 
-The foundation currently materializes in-app notifications, and only
-Schlüssel's password-change event is connected end to end. Follow-up work is
-ordered as follows:
+The foundation materializes in-app notifications, with the producer outbox
+and signed event contract now rolled out to every registered Hof service
+(Schlüssel, Kuvert, Tafel, Zettel). Follow-up work is ordered as follows:
 
-1. Roll the producer outbox and signed event contract out to every Hof service.
-2. Add a global Glocke bell and unread state to the shared Hof `Header`.
-3. Add Browser Push through a Glocke-owned service worker and VAPID configuration.
-4. Add the Telegram bot and secure account-linking flow.
+1. Add a global Glocke bell and unread state to the shared Hof `Header`.
+2. Add Browser Push through a Glocke-owned service worker and VAPID configuration.
+3. Add the Telegram bot and secure account-linking flow.
 
-The global bell, Browser Push/service worker/VAPID, Telegram bot/linking, and
-the remaining producers are explicitly not implemented by this foundation.
+The global bell, Browser Push/service worker/VAPID, and Telegram bot/linking
+are explicitly not implemented by this foundation.
 
 ## License
 

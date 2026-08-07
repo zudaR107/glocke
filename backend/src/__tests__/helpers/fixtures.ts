@@ -5,22 +5,24 @@ import type { EventEnvelope, InboxRecord, NotificationRecord } from '../../contr
 export const EVENT_SECRET = 'test-only-secret-with-at-least-32-bytes'
 export const EVENT_KEY_ID = 'tafel-test'
 
-export function eventEnvelope(overrides: Partial<EventEnvelope> = {}): EventEnvelope {
+export function eventEnvelope(
+  overrides: Omit<Partial<EventEnvelope>, 'payload'> & { payload?: Record<string, unknown> } = {},
+): EventEnvelope {
   return {
     version: '1',
     id: '10000000-0000-4000-8000-000000000001',
     source: 'tafel',
-    type: 'task.due',
+    type: 'tafel.task.due.v1',
     occurredAt: '2026-08-07T10:00:00.000Z',
     correlationId: '20000000-0000-4000-8000-000000000001',
     payload: {
       recipientId: 'user-1',
-      title: 'Task is due',
-      body: 'Prepare release notes',
-      actionUrl: '/tasks/task-1',
+      taskTitle: 'Подготовить заметки к выпуску',
+      dueDate: '2026-08-08',
+      overdue: false,
     },
     ...overrides,
-  }
+  } as unknown as EventEnvelope
 }
 
 export function signedEventRequest(envelope: unknown, secret = EVENT_SECRET): RequestInit {

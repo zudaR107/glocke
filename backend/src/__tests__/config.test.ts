@@ -7,9 +7,15 @@ function validEnv(): NodeJS.ProcessEnv {
     JWT_ISSUER: 'schlussel', SCHLUSSEL_INTERNAL_URL: 'http://schlussel:4000',
     GLOCKE_TO_SCHLUSSEL_HMAC_KEY_ID: 'glocke-v1',
     GLOCKE_TO_SCHLUSSEL_HMAC_SECRET: 'glocke-to-schlussel-secret-32-bytes',
-    ALLOWED_ORIGINS: 'https://glocke.localhost', GLOCKE_EVENT_SOURCES: 'schlussel',
+    ALLOWED_ORIGINS: 'https://glocke.localhost', GLOCKE_EVENT_SOURCES: 'schlussel,kuvert,tafel,zettel',
     GLOCKE_SOURCE_KEY_ID_SCHLUSSEL: 'schlussel-v1',
     GLOCKE_SOURCE_SECRET_SCHLUSSEL: 'schlussel-to-glocke-secret-32-bytes',
+    GLOCKE_SOURCE_KEY_ID_KUVERT: 'kuvert-v1',
+    GLOCKE_SOURCE_SECRET_KUVERT: 'kuvert-to-glocke-secret-with-32-bytes',
+    GLOCKE_SOURCE_KEY_ID_TAFEL: 'tafel-v1',
+    GLOCKE_SOURCE_SECRET_TAFEL: 'tafel-to-glocke-secret-with-32-bytes',
+    GLOCKE_SOURCE_KEY_ID_ZETTEL: 'zettel-v1',
+    GLOCKE_SOURCE_SECRET_ZETTEL: 'zettel-to-glocke-secret-with-32-bytes',
   }
 }
 
@@ -17,7 +23,13 @@ describe('runtime configuration', () => {
   it('loads complete producer and recipient-call credentials', () => {
     expect(loadConfig(validEnv())).toMatchObject({
       port: 3004, schlusselKeyId: 'glocke-v1', recipientFetchTimeoutMs: 5_000,
-      workerLeaseMs: 30_000, producers: { schlussel: { keyId: 'schlussel-v1' } },
+      workerLeaseMs: 30_000,
+      producers: {
+        schlussel: { keyId: 'schlussel-v1' },
+        kuvert: { keyId: 'kuvert-v1' },
+        tafel: { keyId: 'tafel-v1' },
+        zettel: { keyId: 'zettel-v1' },
+      },
     })
   })
 
@@ -71,5 +83,14 @@ describe('runtime configuration', () => {
       GLOCKE_SOURCE_SECRET_TAFEL: validEnv()['GLOCKE_SOURCE_SECRET_SCHLUSSEL'],
     }
     expect(() => loadConfig(env)).toThrow(/distinct secret/)
+  })
+
+  it('rejects a configured producer absent from the central event registry', () => {
+    expect(() => loadConfig({
+      ...validEnv(),
+      GLOCKE_EVENT_SOURCES: 'schlussel,unknown',
+      GLOCKE_SOURCE_KEY_ID_UNKNOWN: 'unknown-v1',
+      GLOCKE_SOURCE_SECRET_UNKNOWN: 'unknown-to-glocke-secret-with-32-bytes',
+    })).toThrow(/registry|unsupported|unknown/i)
   })
 })

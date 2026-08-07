@@ -52,4 +52,45 @@ describe('export OpenAPI contract', () => {
     expect(notifications.items.properties).not.toHaveProperty('leaseId')
     expect(notifications.items.properties).not.toHaveProperty('payloadHash')
   })
+
+  it('publishes only the four source-bound event contracts without producer presentation fields', () => {
+    const operation = openApiDocument.paths?.['/internal/v1/events']?.post as any
+    const schema = operation.requestBody.content['application/json'].schema
+    const variants = schema.oneOf ?? schema.anyOf
+
+    expect(variants).toHaveLength(4)
+    const contracts = Object.fromEntries(variants.map((variant: any) => [
+      variant.properties.type.enum[0],
+      variant,
+    ]))
+    expect(Object.keys(contracts).sort()).toEqual([
+      'kuvert.goal.completed.v1',
+      'schlussel.security.password_changed.v1',
+      'tafel.task.due.v1',
+      'zettel.note.backlink_added.v1',
+    ])
+
+    const expected = {
+      'schlussel.security.password_changed.v1': ['recipientId'],
+      'kuvert.goal.completed.v1': ['recipientId', 'goalName'],
+      'tafel.task.due.v1': ['recipientId', 'taskTitle', 'dueDate', 'overdue'],
+      'zettel.note.backlink_added.v1': ['recipientId', 'sourceTitle', 'targetTitle'],
+    }
+    for (const [type, fields] of Object.entries(expected)) {
+      const variant = contracts[type]
+      expect(variant.properties.source.enum).toEqual([type.split('.')[0]])
+      expect(variant.properties.payload.required.sort()).toEqual([...fields].sort())
+      expect(variant.properties.payload.additionalProperties).toBe(false)
+      expect(variant.properties.payload.properties).not.toHaveProperty('title')
+      expect(variant.properties.payload.properties).not.toHaveProperty('body')
+      expect(variant.properties.payload.properties).not.toHaveProperty('actionUrl')
+      for (const field of fields.filter((field) => field !== 'overdue' && field !== 'dueDate')) {
+        expect(variant.properties.payload.properties[field].maxLength).toBeGreaterThan(0)
+      }
+    }
+    expect(contracts['tafel.task.due.v1'].properties.payload.properties.dueDate).toMatchObject({
+      type: 'string', format: 'date',
+    })
+    expect(contracts['tafel.task.due.v1'].properties.payload.properties.overdue).toMatchObject({ type: 'boolean' })
+  })
 })

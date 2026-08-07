@@ -44,7 +44,9 @@ describe('SqliteNotificationRepository', () => {
       authenticate: async () => null,
     })
     const original = eventEnvelope()
-    const changed = eventEnvelope({ payload: { recipientId: 'user-1', title: 'Changed', body: 'Changed' } })
+    const changed = eventEnvelope({ payload: {
+      recipientId: 'user-1', taskTitle: 'Другой заголовок', dueDate: '2026-08-08', overdue: false,
+    } })
 
     expect((await app.request('/internal/v1/events', signedEventRequest(original))).status).toBe(202)
     expect((await app.request('/internal/v1/events', signedEventRequest(original))).status).toBe(200)
