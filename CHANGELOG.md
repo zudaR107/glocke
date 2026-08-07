@@ -1,0 +1,26 @@
+# Changelog
+
+## [Unreleased]
+
+### Added
+
+- Standalone durable in-app notification service and Russian notification center.
+- Exact-body HMAC-SHA-256 ingestion for the shared v1 event envelope, with
+  source/key/timestamp validation, bounded bodies, a durable idempotent inbox,
+  conflict detection, and fenced worker leases.
+- At-most-one stored notification per source event and recipient, current
+  Schlüssel `notifyInApp` lookup before materialization, and durable suppression
+  for disabled or deleted recipients. This is retry-safe, not an exactly-once
+  delivery claim.
+- JWT-isolated list, unread-count, read, read-all, and delete APIs; admin-only
+  OpenAPI/Swagger UI; health/readiness endpoints; migrations; graceful worker
+  shutdown; containers; CI; and GHCR publishing configuration.
+- Documentation for directional secret generation, direct development, Tor,
+  producer outbox/inbox guarantees, and the complete Hof ecosystem.
+
+### Planned
+
+- Roll out transactional producer outboxes to every Hof service.
+- Add the global Glocke bell and unread state to the shared Hof Header.
+- Add Browser Push with a Glocke-owned service worker and VAPID configuration.
+- Add the Telegram bot and secure account-linking flow.

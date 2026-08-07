@@ -1,0 +1,58 @@
+# One-time setup: create the external `schloss-net`, initialize submodules,
+# copy .env.example to .env, and replace both HMAC placeholders with distinct
+# generated secrets. Neither service publishes a host port; use the sibling
+# tor gateway for browser access.
+services:
+  glocke-backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: 3004
+      DATABASE_PATH: ${GLOCKE_DATABASE_PATH:-/data/glocke.db}
+      SCHLUSSEL_JWKS_URL: ${SCHLUSSEL_JWKS_URL:-http://schlussel:4000/.well-known/jwks.json}
+      SCHLUSSEL_INTERNAL_URL: ${SCHLUSSEL_INTERNAL_URL:-http://schlussel:4000}
+      GLOCKE_TO_SCHLUSSEL_HMAC_KEY_ID: ${GLOCKE_TO_SCHLUSSEL_HMAC_KEY_ID:-glocke-v1}
+      GLOCKE_TO_SCHLUSSEL_HMAC_SECRET: ${GLOCKE_TO_SCHLUSSEL_HMAC_SECRET:?set GLOCKE_TO_SCHLUSSEL_HMAC_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER:-schlussel}
+      ALLOWED_ORIGINS: ${GLOCKE_ALLOWED_ORIGINS:-https://localhost,https://glocke.localhost}
+      GLOCKE_EVENT_SOURCES: ${GLOCKE_EVENT_SOURCES:-schlussel}
+      GLOCKE_SOURCE_KEY_ID_SCHLUSSEL: ${SCHLUSSEL_TO_GLOCKE_HMAC_KEY_ID:-schlussel-v1}
+      GLOCKE_SOURCE_SECRET_SCHLUSSEL: ${SCHLUSSEL_TO_GLOCKE_HMAC_SECRET:?set SCHLUSSEL_TO_GLOCKE_HMAC_SECRET}
+      GLOCKE_MAX_SKEW_SECONDS: ${GLOCKE_MAX_SKEW_SECONDS:-300}
+      GLOCKE_MAX_EVENT_BYTES: ${GLOCKE_MAX_EVENT_BYTES:-65536}
+      GLOCKE_WORKER_INTERVAL_MS: ${GLOCKE_WORKER_INTERVAL_MS:-1000}
+      GLOCKE_RECIPIENT_FETCH_TIMEOUT_MS: ${GLOCKE_RECIPIENT_FETCH_TIMEOUT_MS:-5000}
+      GLOCKE_WORKER_LEASE_MS: ${GLOCKE_WORKER_LEASE_MS:-30000}
+    volumes:
+      - glocke-data:/data
+    networks:
+      - schloss-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3004/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  glocke-frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_SCHLUSSEL_URL: ${SCHLUSSEL_WEB_URL:-https://auth.localhost}
+        VITE_SCHLOSS_URL: ${SCHLOSS_URL:-https://localhost}
+    restart: unless-stopped
+    depends_on:
+      glocke-backend:
+        condition: service_healthy
+    networks:
+      - schloss-net
+
+volumes:
+  glocke-data:
+    name: glocke-data
+
+networks:
+  schloss-net:
+    external: true

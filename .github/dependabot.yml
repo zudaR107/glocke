@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      # Keep the platform-wide native-build policy: v13 removed prebuilt
+      # binaries and broke sibling Docker builds by always invoking node-gyp.
+      - dependency-name: "better-sqlite3"
+        update-types: ["version-update:semver-major"]
+    groups:
+      pnpm-workspace:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly

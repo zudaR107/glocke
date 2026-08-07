@@ -1,0 +1,21 @@
+name: Bug report
+description: Report reproducible incorrect Glocke behavior
+title: "[Bug]: "
+labels: ["type:bug"]
+body:
+  - type: textarea
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Environment and logs
+      description: Include Glocke version/commit, direct development or Docker/Tor deployment, browser if relevant, and sanitized logs. Remove tokens, HMAC signatures, secrets, and personal notification content.
+    validations:
+      required: true

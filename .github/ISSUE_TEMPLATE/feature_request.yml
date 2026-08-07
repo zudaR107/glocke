@@ -1,0 +1,27 @@
+name: Feature request
+description: Propose a focused Glocke improvement
+title: "[Feature]: "
+labels: ["type:feat"]
+body:
+  - type: textarea
+    attributes:
+      label: Problem
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposed outcome
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: Area
+      options:
+        - In-app notification center
+        - Producer integration
+        - Global Header bell
+        - Browser Push / service worker / VAPID
+        - Telegram bot / account linking
+        - Operations or documentation
+    validations:
+      required: true
