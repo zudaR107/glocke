@@ -1,0 +1,10 @@
+node_modules/
+dist/
+data/
+.env
+*.db
+*.db-shm
+*.db-wal
+.pnpm-store/
+*.tsbuildinfo
+coverage/

@@ -1,0 +1,27 @@
+:80 {
+	root * /srv
+	encode gzip zstd
+
+	route {
+		@authCallback path /auth/callback*
+		handle @authCallback {
+			try_files {path} /index.html
+			file_server
+		}
+
+		handle_path /backend/* {
+			reverse_proxy glocke-backend:3004
+		}
+
+		handle /auth/* {
+			reverse_proxy schlussel:4000 {
+				header_up -X-Schlussel-Frontend
+			}
+		}
+
+		handle {
+			try_files {path} /index.html
+			file_server
+		}
+	}
+}
