@@ -36,6 +36,7 @@ React frontend. Shared auth, transport, and UI come from the
   after creating the notification but before completing the inbox row.
 - Before materialization, Glocke makes a separately signed internal request to Schlüssel and uses the recipient's current `notifyInApp` value. Disabled delivery and deleted recipients are suppressed and completed.
 - Public routes derive ownership only from the verified JWT. They provide cursor pagination, unread count, read, read-all, and delete.
+- `GET /exports/me` returns a standardized versioned JSON snapshot containing every caller-owned notification and its read state. It accepts either a normal Glocke access token or a Schlüssel export delegation scoped to `data:export` with the exact `hof-service:glocke` audience. Inbox payloads and hashes, worker leases, local user rows, and runtime credentials are never included.
 - SQLite starts in WAL mode with foreign-key enforcement and runs generated Drizzle migrations before serving.
 
 The current end-to-end producer is Schlüssel. A password change and its outbox
@@ -53,6 +54,37 @@ at-least-once-style attempts, but those attempts are bounded: a terminal
 notification unique keys make retries idempotent. These guarantees cover
 database state, not an exactly-once observation by clients or future external
 delivery channels.
+
+## Data exports
+
+`GET /exports/me` is a synchronous direct Glocke JSON export, used both by the
+Settings download and as an input to Schlüssel's separate asynchronous
+all-services ZIP. Its strict version 1 envelope contains all user-visible
+notifications owned by the verified subject, without pagination, including
+read state. The query runs when the request reaches Glocke; it is not a
+platform-wide point-in-time snapshot.
+
+The endpoint accepts an ordinary access token or a JWKS-verified RS256
+delegation with the configured exact issuer, `token_use: export`, the single
+`hof-service:glocke` audience, `data:export` scope, and nonempty subject, job,
+and token IDs plus a non-expired numeric `exp`. Delegations are accepted only
+here, and the subject comes from the verified token rather than request data.
+Responses are private, no-store, and nosniff.
+
+Only Schlüssel's `/export-jobs` creates the ZIP. Services snapshot
+independently, so timestamps can differ; retrying failed services preserves
+successful files and captures retries later. If at least one service succeeds
+and at least one fails, the job produces a partial archive. `manifest.json`
+records status, attempts, files, timestamps, byte counts, SHA-256 checksums,
+and sanitized failures.
+
+The ZIP is an authenticated owner-only no-store download. It expires after a
+short TTL (24 hours by default) and is bounded by per-user cooldown and
+retention caps, response-size limits, a global storage quota, and a free-space
+reserve. Export files are sensitive: Glocke includes notification titles,
+bodies, actions, sources, and read state, but excludes inbox envelopes and
+payload hashes, suppressed events, leases, local user rows, HMAC/JWT material,
+runtime configuration, logs, other users, and other services' data.
 
 ## Internal v1 envelope
 
@@ -127,6 +159,8 @@ The Vite frontend defaults to `http://localhost:4001` for Schlüssel,
 `http://localhost:3000` for Schloss, and proxies `/backend` to the direct
 Glocke backend on port `3004`. Override those browser URLs with
 `VITE_SCHLUSSEL_URL` and `VITE_SCHLOSS_URL` in `frontend/.env` if needed.
+The Settings page downloads the current user's Glocke snapshot directly as
+`glocke-export-YYYY-MM-DD.json` through the existing authenticated API client.
 
 ### Configuration
 
@@ -195,6 +229,7 @@ HTTPS with its local CA; follow Tor's README to trust that CA in the browser.
 ## Operations
 
 - `GET /health` is liveness; `GET /ready` checks SQLite.
+- `GET /exports/me` accepts normal access JWTs and delegated export JWTs; delegated tokens are rejected by all ordinary notification APIs.
 - `GET /openapi.json` requires an authenticated administrator. The frontend exposes it at admin-only `/docs`.
 - Migrations run at startup. Generate schema changes with `pnpm db:generate`.
 - `SIGINT` and `SIGTERM` stop the HTTP server and new worker claims, wait for the active worker, then close SQLite. A 10-second fail-safe exits nonzero if graceful shutdown does not finish.

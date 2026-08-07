@@ -53,6 +53,7 @@
 .info-card h2, .prose-card h2 { font-size: 1rem; margin: 0 0 .45rem; }
 .info-card p, .prose-card p { margin: 0; color: var(--text-secondary); line-height: 1.6; font-size: .875rem; }
 .roadmap-note { margin-top: 1.5rem; background: var(--accent-muted); color: var(--accent-text); line-height: 1.55; }
+.settings-export { margin-top: 1.5rem; }
 .docs-page { background: white; min-height: 500px; }
 .callback-screen { min-height: 100vh; display: grid; place-items: center; color: var(--text-muted); }
 

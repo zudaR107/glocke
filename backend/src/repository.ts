@@ -129,6 +129,14 @@ export class SqliteNotificationRepository implements NotificationRepository {
     return { items, nextCursor: hasMore && last ? cursorEncode(last.createdAt, last.id) : null }
   }
 
+  async exportNotifications(userId: string): Promise<NotificationRecord[]> {
+    return this.database.select().from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt), desc(notifications.id))
+      .all()
+      .map(notificationRecord)
+  }
+
   async unreadCount(userId: string): Promise<number> {
     return this.database.select({ value: count() }).from(notifications).where(and(
       eq(notifications.userId, userId), isNull(notifications.readAt),

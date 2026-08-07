@@ -1,6 +1,10 @@
 import { serve } from '@hono/node-server'
 import { createId } from '@paralleldrive/cuid2'
-import { createAuthMiddleware, createCorsMiddleware } from '@zudar107/schloss-server-kit'
+import {
+  createAuthMiddleware,
+  createCorsMiddleware,
+  createExportAuthMiddleware,
+} from '@zudar107/schloss-server-kit'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { sql } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -40,12 +44,18 @@ const { requireAuth, requireAdmin } = createAuthMiddleware({
     })
   },
 })
+const requireExportAuth = createExportAuthMiddleware({
+  jwksUrl: config.jwksUrl,
+  issuer: config.jwtIssuer,
+  service: 'glocke',
+})
 
 const service = createApp({
   repository,
   sourceCredentials: config.producers,
   requireAuth,
   requireAdmin,
+  requireExportAuth,
   maxSkewSeconds: config.maxSkewSeconds,
   maxEventBytes: config.maxEventBytes,
   ready: async () => {
