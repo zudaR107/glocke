@@ -1,4 +1,5 @@
 import type { ProducerCredential } from './app.js'
+import { registeredEventSources } from './event-registry.js'
 
 export interface RuntimeConfig {
   port: number
@@ -65,6 +66,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
   const sources = required(env, 'GLOCKE_EVENT_SOURCES').split(',').map((value) => value.trim())
   if (sources.some((source) => !/^[a-z][a-z0-9-]{0,63}$/.test(source)) || new Set(sources).size !== sources.length) {
     throw new Error('GLOCKE_EVENT_SOURCES must contain unique lowercase service names')
+  }
+  const unregistered = sources.filter((source) => !registeredEventSources.has(source))
+  if (unregistered.length > 0) {
+    throw new Error(`GLOCKE_EVENT_SOURCES contains a producer absent from the central event registry: ${unregistered.join(', ')}`)
   }
   const producers = Object.fromEntries(sources.map((source) => {
     const suffix = source.toUpperCase().replaceAll('-', '_')

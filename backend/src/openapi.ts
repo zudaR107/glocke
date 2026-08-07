@@ -1,5 +1,6 @@
 import { OpenAPIRegistry, OpenApiGeneratorV3 } from '@asteasolutions/zod-to-openapi'
 import { z } from 'zod'
+import { eventRegistry } from './event-registry.js'
 
 const registry = new OpenAPIRegistry()
 registry.registerComponent('securitySchemes', 'bearerAuth', { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' })
@@ -56,22 +57,21 @@ registry.registerPath({
     401: { description: 'Missing, invalid, expired, or incorrectly scoped token' },
   },
 })
+const eventEnvelopeVariants = eventRegistry.map((registered) => z.object({
+  version: z.literal('1'),
+  id: z.uuid().describe('Non-nil event UUID'),
+  type: z.literal(registered.type),
+  source: z.literal(registered.source),
+  occurredAt: z.iso.datetime(),
+  correlationId: z.uuid().describe('Non-nil correlation UUID'),
+  payload: registered.payloadSchema,
+}).strict().describe(`Exact payload contract for ${registered.type}; only source ${registered.source} may send it. Presentation (title/body/actionUrl) is never producer-supplied - Glocke renders it centrally.`)) as unknown as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]
+
 registry.registerPath({
   method: 'post', path: '/internal/v1/events', tags: ['internal'], summary: 'Accept a signed notification event',
-  description: 'Authenticates the exact request body bytes and configured producer identity before durably writing the inbox. A new event returns 202, an exact byte-for-byte replay of the same source and event id returns 200, and identity reuse with different bytes returns 409. Producers may retry with the same stable event id; this is idempotent intake, not an exactly-once delivery guarantee.',
+  description: 'Authenticates the exact request body bytes and configured producer identity before durably writing the inbox. The envelope must match one of the registered (source, type) contracts exactly - an unregistered type, a type claimed by the wrong source, or a payload with unexpected/missing fields is rejected. A new event returns 202, an exact byte-for-byte replay of the same source and event id returns 200, and identity reuse with different bytes returns 409. Producers may retry with the same stable event id; this is idempotent intake, not an exactly-once delivery guarantee.',
   security: [{ hofHmac: [] }],
-  request: { body: { content: { 'application/json': { schema: z.object({
-    version: z.literal('1'), id: z.uuid().describe('Non-nil event UUID'), type: z.string().min(1), source: z.string().min(1), occurredAt: z.iso.datetime(), correlationId: z.uuid().describe('Non-nil correlation UUID'),
-    payload: z.union([
-      z.object({ recipientId: z.string().min(1) }).strict().describe('Exact minimal payload for schlussel.security.password_changed.v1; only source schlussel may send that type.'),
-      z.object({
-        recipientId: z.string().min(1),
-        title: z.string().min(1).max(200),
-        body: z.string().min(1).max(4_000),
-        actionUrl: z.string().max(2_000).optional().describe('String beginning with / but not //, or beginning with https://.'),
-      }).strict().describe('Payload for other configured event types.'),
-    ]),
-  }) } } } },
+  request: { body: { content: { 'application/json': { schema: z.union(eventEnvelopeVariants) } } } },
   responses: {
     202: { description: 'Durably accepted as a new inbox event' },
     200: { description: 'Exact duplicate; no second inbox row was created' },

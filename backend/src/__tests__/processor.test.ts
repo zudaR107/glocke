@@ -90,4 +90,75 @@ describe('inbox processing', () => {
       actionUrl: '/settings',
     })
   })
+
+  it.each([
+    {
+      source: 'kuvert',
+      type: 'kuvert.goal.completed.v1',
+      payload: { recipientId: 'user-1', goalName: 'Резервный фонд' },
+      expected: {
+        title: 'Цель достигнута',
+        body: 'Цель «Резервный фонд» достигнута.',
+        actionUrl: '/goals',
+      },
+    },
+    {
+      source: 'tafel',
+      type: 'tafel.task.due.v1',
+      payload: { recipientId: 'user-1', taskTitle: 'Опубликовать релиз', dueDate: '2026-08-08', overdue: false },
+      expected: {
+        title: 'Срок задачи приближается',
+        body: 'Задачу «Опубликовать релиз» нужно выполнить до 2026-08-08.',
+        actionUrl: '/tasks',
+      },
+    },
+    {
+      source: 'tafel',
+      type: 'tafel.task.due.v1',
+      payload: { recipientId: 'user-1', taskTitle: 'Опубликовать релиз', dueDate: '2026-08-06', overdue: true },
+      expected: {
+        title: 'Задача просрочена',
+        body: 'Срок задачи «Опубликовать релиз» истёк 2026-08-06.',
+        actionUrl: '/tasks',
+      },
+    },
+    {
+      source: 'zettel',
+      type: 'zettel.note.backlink_added.v1',
+      payload: { recipientId: 'user-1', sourceTitle: 'Архитектура', targetTitle: 'Glocke' },
+      expected: {
+        title: 'Добавлена обратная ссылка',
+        body: 'Заметка «Архитектура» теперь ссылается на «Glocke».',
+        actionUrl: null,
+      },
+    },
+  ])('centrally renders $type in deterministic Russian', async ({ source, type, payload, expected }) => {
+    const envelope = eventEnvelope({ source, type, payload })
+    repository.seedInbox(inboxRecord({ envelope, source }))
+
+    expect(await processor().processNext()).toBe('processed')
+    expect(repository.notifications[0]).toMatchObject(expected)
+  })
+
+  it('never renders producer-controlled presentation or links', async () => {
+    const envelope = eventEnvelope({
+      source: 'kuvert',
+      type: 'kuvert.goal.completed.v1',
+      payload: {
+        recipientId: 'user-1',
+        goalName: 'Резервный фонд',
+        title: 'Поддельный заголовок',
+        body: 'Поддельный текст',
+        actionUrl: 'https://attacker.invalid/collect',
+      },
+    })
+    repository.seedInbox(inboxRecord({ envelope, source: 'kuvert' }))
+
+    expect(await processor().processNext()).toBe('processed')
+    expect(repository.notifications[0]).toMatchObject({
+      title: 'Цель достигнута',
+      body: 'Цель «Резервный фонд» достигнута.',
+      actionUrl: '/goals',
+    })
+  })
 })

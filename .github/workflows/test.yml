@@ -33,8 +33,14 @@ jobs:
         env:
           GLOCKE_TO_SCHLUSSEL_HMAC_SECRET: ci-only-schlussel-secret-at-least-32-bytes
           SCHLUSSEL_TO_GLOCKE_HMAC_SECRET: ci-only-producer-secret-at-least-32-bytes
+          KUVERT_TO_GLOCKE_HMAC_SECRET: ci-only-kuvert-secret-at-least-32-bytes
+          TAFEL_TO_GLOCKE_HMAC_SECRET: ci-only-tafel-secret-at-least-32-bytes
+          ZETTEL_TO_GLOCKE_HMAC_SECRET: ci-only-zettel-secret-at-least-32-bytes
       - run: docker compose build glocke-backend glocke-frontend
         env:
           GLOCKE_TO_SCHLUSSEL_HMAC_SECRET: ci-only-schlussel-secret-at-least-32-bytes
           SCHLUSSEL_TO_GLOCKE_HMAC_SECRET: ci-only-producer-secret-at-least-32-bytes
+          KUVERT_TO_GLOCKE_HMAC_SECRET: ci-only-kuvert-secret-at-least-32-bytes
+          TAFEL_TO_GLOCKE_HMAC_SECRET: ci-only-tafel-secret-at-least-32-bytes
+          ZETTEL_TO_GLOCKE_HMAC_SECRET: ci-only-zettel-secret-at-least-32-bytes
       - run: git diff --check

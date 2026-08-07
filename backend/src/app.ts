@@ -9,6 +9,7 @@ import {
 import { Hono, type MiddlewareHandler } from 'hono'
 import { z } from 'zod'
 import type { Authenticate, EventEnvelope, NotificationRepository } from './contracts.js'
+import { eventRegistryByType } from './event-registry.js'
 
 export interface ProducerCredential {
   keyId: string
@@ -29,17 +30,6 @@ export interface CreateAppOptions {
   now?: () => Date
   ready?: () => Promise<boolean>
 }
-
-const genericPayloadSchema = z.object({
-  recipientId: z.string().min(1),
-  title: z.string().trim().min(1).max(200),
-  body: z.string().trim().min(1).max(4_000),
-  actionUrl: z.string().max(2_000).refine((value) => (
-    (value.startsWith('/') && !value.startsWith('//')) || value.startsWith('https://')
-  ), 'Action URL must be a relative path or HTTPS URL').optional(),
-}).strict()
-
-const passwordChangedPayloadSchema = z.object({ recipientId: z.string().min(1) }).strict()
 
 function credentials(options: CreateAppOptions): Readonly<Record<string, ProducerCredential>> {
   if (options.sourceCredentials) return options.sourceCredentials
@@ -136,13 +126,21 @@ export function createApp(options: CreateAppOptions): Hono<ExportAuthEnv> {
       return context.json({ error: 'Invalid JSON' }, 400)
     }
     const parsed = notificationEventEnvelopeSchema.safeParse(json)
-    const payload = parsed.success && parsed.data.type === 'schlussel.security.password_changed.v1'
-      ? passwordChangedPayloadSchema.safeParse(parsed.data.payload)
-      : parsed.success ? genericPayloadSchema.safeParse(parsed.data.payload) : null
-    if (
-      !parsed.success || !payload?.success || parsed.data.source !== source ||
-      (parsed.data.type === 'schlussel.security.password_changed.v1' && parsed.data.source !== 'schlussel')
-    ) {
+    if (!parsed.success || parsed.data.source !== source) {
+      return context.json({ error: 'Invalid event envelope' }, 400)
+    }
+
+    // Registry is the sole authority on which (source, type) pairs exist
+    // and what shape their payload takes - a source claiming a type it
+    // doesn't own, or a type this deployment never registered, is
+    // rejected here regardless of whether the payload itself looks
+    // otherwise valid.
+    const registered = eventRegistryByType.get(parsed.data.type)
+    if (!registered || registered.source !== parsed.data.source) {
+      return context.json({ error: 'Invalid event envelope' }, 400)
+    }
+    const payload = registered.payloadSchema.safeParse(parsed.data.payload)
+    if (!payload.success) {
       return context.json({ error: 'Invalid event envelope' }, 400)
     }
 
