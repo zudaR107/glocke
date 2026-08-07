@@ -17,6 +17,10 @@
   shutdown; containers; CI; and GHCR publishing configuration.
 - Documentation for directional secret generation, direct development, Tor,
   producer outbox/inbox guarantees, and the complete Hof ecosystem.
+- Direct and delegated account-scoped JSON exports of all user-visible
+  notifications and read state, with a shared Settings download action. This
+  remains a synchronous Glocke-only endpoint; asynchronous all-services ZIP
+  orchestration and artifact retention are owned by Schlüssel.
 
 ### Planned
 

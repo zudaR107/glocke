@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto'
 import {
+  exportEnvelopeSchema,
   notificationEventEnvelopeSchema,
   verifyNotificationRequest,
   type AuthUser,
+  type ExportAuthEnv,
 } from '@zudar107/schloss-server-kit'
 import { Hono, type MiddlewareHandler } from 'hono'
 import { z } from 'zod'
@@ -21,6 +23,7 @@ export interface CreateAppOptions {
   authenticate?: Authenticate
   requireAuth?: MiddlewareHandler
   requireAdmin?: MiddlewareHandler
+  requireExportAuth?: MiddlewareHandler<ExportAuthEnv>
   maxSkewSeconds?: number
   maxEventBytes?: number
   now?: () => Date
@@ -63,11 +66,21 @@ function testAuth(options: CreateAppOptions): MiddlewareHandler {
   }
 }
 
-export function createApp(options: CreateAppOptions): Hono {
-  const app = new Hono()
+function testExportAuth(options: CreateAppOptions): MiddlewareHandler<ExportAuthEnv> {
+  return async (context, next) => {
+    const userId = await options.authenticate?.(context.req.raw)
+    if (!userId) return context.json({ error: 'Unauthorized' }, 401)
+    context.set('exportPrincipal', { sub: userId, kind: 'access' })
+    await next()
+  }
+}
+
+export function createApp(options: CreateAppOptions): Hono<ExportAuthEnv> {
+  const app = new Hono<ExportAuthEnv>()
   const producers = credentials(options)
   const requireAuth = options.requireAuth ?? testAuth(options)
   const requireAdmin = options.requireAdmin ?? (async (_context, next) => next())
+  const requireExportAuth = options.requireExportAuth ?? testExportAuth(options)
   const now = options.now ?? (() => new Date())
 
   app.get('/health', (context) => context.json({ status: 'ok', service: 'Glocke' }))
@@ -182,6 +195,35 @@ export function createApp(options: CreateAppOptions): Hono {
   app.delete('/notifications/:id', async (context) => {
     const deleted = await options.repository.deleteNotification(context.get('user').id, context.req.param('id'))
     return deleted ? context.body(null, 204) : context.json({ error: 'Not found' }, 404)
+  })
+
+  app.get('/exports/me', async (context, next) => {
+    context.header('Cache-Control', 'private, no-store')
+    context.header('Pragma', 'no-cache')
+    context.header('X-Content-Type-Options', 'nosniff')
+    await next()
+  }, requireExportAuth, async (context) => {
+    const principal = context.get('exportPrincipal')
+    if (!principal) return context.json({ error: 'Unauthorized' }, 401)
+
+    const notifications = (await options.repository.exportNotifications(principal.sub)).map((notification) => ({
+      id: notification.id,
+      eventId: notification.eventId,
+      source: notification.source,
+      type: notification.type,
+      title: notification.title,
+      body: notification.body,
+      actionUrl: notification.actionUrl,
+      createdAt: notification.createdAt,
+      readAt: notification.readAt,
+    }))
+
+    return context.json(exportEnvelopeSchema.parse({
+      version: '1',
+      service: 'glocke',
+      exportedAt: now().toISOString(),
+      data: { notifications },
+    }))
   })
 
   app.get('/openapi.json', requireAuth, requireAdmin, async (context) => {

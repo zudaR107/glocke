@@ -8,6 +8,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from '../app.js'
+import type { NotificationRecord } from '../contracts.js'
 import * as schema from '../db/schema.js'
 import { notifications } from '../db/schema.js'
 import { SqliteNotificationRepository } from '../repository.js'
@@ -96,5 +97,33 @@ describe('SqliteNotificationRepository', () => {
     expect(await repository.unreadCount('user-2')).toBe(1)
     expect(await repository.deleteNotification('user-2', 'two')).toBe(false)
     expect(await repository.deleteNotification('user-1', 'two')).toBe(true)
+  })
+
+  it('exports every caller-owned notification with read state and no page limit', async () => {
+    for (let index = 0; index < 101; index += 1) {
+      database.insert(notifications).values({
+        ...notificationRecord({
+          id: `owned-${index}`,
+          eventId: `owned-event-${index}`,
+          readAt: index === 0 ? '2026-08-07T11:00:00.000Z' : null,
+        }),
+        createdAt: new Date(Date.UTC(2026, 7, 7, 10, 0, index)),
+        readAt: index === 0 ? new Date('2026-08-07T11:00:00.000Z') : null,
+      }).run()
+    }
+    database.insert(notifications).values({
+      ...notificationRecord({ id: 'foreign-export', eventId: 'foreign-export', userId: 'user-2' }),
+      createdAt: new Date('2026-08-07T12:00:00.000Z'),
+      readAt: null,
+    }).run()
+
+    const exported: NotificationRecord[] = await repository.exportNotifications('user-1')
+
+    expect(exported).toHaveLength(101)
+    expect(exported.every((notification) => notification.userId === 'user-1')).toBe(true)
+    expect(exported.some((notification) => notification.id === 'foreign-export')).toBe(false)
+    expect(exported.find((notification) => notification.id === 'owned-0')?.readAt).toBe(
+      '2026-08-07T11:00:00.000Z',
+    )
   })
 })

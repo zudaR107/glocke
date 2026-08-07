@@ -3,6 +3,10 @@ import { z } from 'zod'
 
 const registry = new OpenAPIRegistry()
 registry.registerComponent('securitySchemes', 'bearerAuth', { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' })
+registry.registerComponent('securitySchemes', 'exportDelegationAuth', {
+  type: 'http', scheme: 'bearer', bearerFormat: 'JWT',
+  description: 'Schlüssel export delegation for Glocke with token_use=export, data:export scope, and hof-service:glocke audience.',
+})
 registry.registerComponent('securitySchemes', 'hofHmac', {
   type: 'apiKey', in: 'header', name: 'X-Hof-Signature',
   description: '64-character hexadecimal HMAC-SHA-256 over timestamp, uppercase method, path with query, SHA-256 of the exact body bytes, key id, and source (newline-delimited). The shared signer emits lowercase; verification is case-insensitive. Also requires X-Hof-Service, X-Hof-Key-Id, and X-Hof-Timestamp.',
@@ -12,7 +16,13 @@ const bearer = [{ bearerAuth: [] }]
 const notification = z.object({
   id: z.string(), eventId: z.string(), source: z.string(), type: z.string(), title: z.string(), body: z.string(),
   actionUrl: z.string().nullable(), createdAt: z.iso.datetime(), readAt: z.iso.datetime().nullable(),
-})
+}).strict()
+const exportResponse = z.object({
+  version: z.literal('1'),
+  service: z.literal('glocke'),
+  exportedAt: z.iso.datetime(),
+  data: z.object({ notifications: z.array(notification) }).strict(),
+}).strict()
 const json = (schema: z.ZodType) => ({ content: { 'application/json': { schema } } })
 
 registry.registerPath({
@@ -36,6 +46,15 @@ registry.registerPath({
 registry.registerPath({
   method: 'delete', path: '/notifications/{id}', tags: ['notifications'], summary: 'Delete one notification', security: bearer,
   request: { params: z.object({ id: z.string() }) }, responses: { 204: { description: 'Deleted' }, 404: { description: 'Not found' } },
+})
+registry.registerPath({
+  method: 'get', path: '/exports/me', tags: ['exports'], summary: 'Export caller-owned Glocke data',
+  description: 'Synchronous direct Glocke JSON endpoint used by Settings and as an input to Schlüssel\'s separate asynchronous ZIP collector. Contains every subject-owned user-visible notification and read state without pagination, read when this request runs; it is not a cross-service point-in-time snapshot. Accepts an access token or a JWKS-verified delegation with the exact issuer, token_use=export, single hof-service:glocke audience, data:export scope, nonempty subject/job/token IDs, and a non-expired numeric expiry. Delegations are rejected by ordinary routes and the subject comes only from the verified principal. Inbox envelopes/hashes, suppressed events, worker leases, local user rows, credentials, runtime configuration, logs, other users, and other services are excluded. The response is private, no-store, and nosniff.',
+  security: [{ bearerAuth: [] }, { exportDelegationAuth: [] }],
+  responses: {
+    200: { description: 'Versioned Glocke export envelope', ...json(exportResponse) },
+    401: { description: 'Missing, invalid, expired, or incorrectly scoped token' },
+  },
 })
 registry.registerPath({
   method: 'post', path: '/internal/v1/events', tags: ['internal'], summary: 'Accept a signed notification event',

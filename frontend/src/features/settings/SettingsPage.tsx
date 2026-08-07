@@ -1,8 +1,26 @@
+import { useState } from 'react'
 import { ExternalLink, SlidersHorizontal } from 'lucide-react'
-import { Button } from '@zudar107/schloss-ui'
+import { Button, DirectExportAction, downloadJson } from '@zudar107/schloss-ui'
 import { buildSchluesselAccountUrl } from '../../lib/authRedirect'
+import { api } from '../../lib/api'
 
 export function SettingsPage() {
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+
+  async function downloadExport() {
+    setExporting(true)
+    setExportError(null)
+    try {
+      const snapshot = await api.get('/exports/me')
+      downloadJson(snapshot, `glocke-export-${new Date().toISOString().slice(0, 10)}.json`)
+    } catch {
+      setExportError('Не удалось скачать экспорт данных. Попробуйте ещё раз.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <section className="content-page narrow">
       <div className="eyebrow">Предпочтения</div><h1>Настройки</h1>
@@ -13,6 +31,17 @@ export function SettingsPage() {
       <Button variant="primary" onClick={() => { location.href = buildSchluesselAccountUrl('/settings') }}>
         Открыть настройки аккаунта <ExternalLink size={16}/>
       </Button>
+      <div className="settings-export">
+        <DirectExportAction
+          title="Экспорт данных"
+          description="Скачайте JSON со всеми вашими уведомлениями Glocke и их состоянием прочтения."
+          actionLabel="Скачать данные"
+          loadingLabel="Подготовка данных…"
+          onExport={downloadExport}
+          loading={exporting}
+          error={exportError}
+        />
+      </div>
       <div className="roadmap-note"><strong>Не входит в текущую версию:</strong> Browser Push с сервис-воркером и VAPID, а также Telegram-бот с привязкой аккаунта запланированы как последовательные будущие этапы и сейчас не работают.</div>
     </section>
   )

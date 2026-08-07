@@ -67,6 +67,12 @@ export class MemoryNotificationRepository implements NotificationRepository {
     return { items: structuredClone(items), nextCursor }
   }
 
+  async exportNotifications(userId: string): Promise<NotificationRecord[]> {
+    return structuredClone(this.notifications
+      .filter((notification) => notification.userId === userId)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id)))
+  }
+
   async unreadCount(userId: string): Promise<number> {
     return this.notifications.filter(
       (notification) => notification.userId === userId && notification.readAt === null,

@@ -52,6 +52,7 @@ export interface NotificationRepository {
   markInboxProcessed(source: string, eventId: string, leaseId: string, processedAt: string): Promise<boolean>
   createNotification(record: NotificationRecord, leaseId: string, now: string): Promise<'created' | 'duplicate' | 'stale'>
   listNotifications(userId: string, cursor: string | null, limit: number): Promise<NotificationPage>
+  exportNotifications(userId: string): Promise<NotificationRecord[]>
   unreadCount(userId: string): Promise<number>
   markRead(userId: string, notificationId: string, readAt: string): Promise<NotificationRecord | null>
   markAllRead(userId: string, readAt: string): Promise<number>
