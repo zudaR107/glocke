@@ -1,4 +1,4 @@
-FROM node:22-alpine AS builder
+FROM node:25-alpine AS builder
 WORKDIR /app
 RUN npm install -g pnpm@11.7.0
 ENV CI=true
@@ -14,7 +14,7 @@ RUN pnpm --filter @zudar107/schloss-server-kit build
 COPY backend ./backend
 RUN pnpm --filter backend build
 
-FROM node:22-alpine AS runner
+FROM node:25-alpine AS runner
 WORKDIR /app
 RUN npm install -g pnpm@11.7.0 && apk add --no-cache python3 make g++ wget
 ENV CI=true
