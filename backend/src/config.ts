@@ -11,11 +11,17 @@ export interface RuntimeConfig {
   schlusselSecret: string
   allowedOrigins: string[]
   producers: Record<string, ProducerCredential>
+  sourceOrigins: SourceOrigins
   maxSkewSeconds: number
   maxEventBytes: number
   workerIntervalMs: number
   workerLeaseMs: number
   recipientFetchTimeoutMs: number
+}
+
+export interface SourceOrigins {
+  kuvert: string
+  tafel: string
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -48,6 +54,17 @@ function origin(value: string, name: string): string {
   const parsed = new URL(url(value, name))
   if ((parsed.pathname !== '/' && parsed.pathname !== '') || parsed.search || parsed.hash) {
     throw new Error(`${name} must be an HTTP(S) origin without credentials or a path`)
+  }
+  return parsed.origin
+}
+
+function actionOrigin(value: string, name: string): string {
+  const parsed = new URL(origin(value, name))
+  const isLocalDevelopment = parsed.protocol === 'http:' && (
+    parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]'
+  )
+  if (parsed.protocol !== 'https:' && !isLocalDevelopment) {
+    throw new Error(`${name} must be an HTTPS origin (HTTP is allowed only for localhost development)`)
   }
   return parsed.origin
 }
@@ -102,6 +119,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     schlusselSecret,
     allowedOrigins: origins,
     producers,
+    sourceOrigins: {
+      kuvert: actionOrigin(required(env, 'KUVERT_ORIGIN'), 'KUVERT_ORIGIN'),
+      tafel: actionOrigin(required(env, 'TAFEL_ORIGIN'), 'TAFEL_ORIGIN'),
+    },
     maxSkewSeconds: integer(env, 'GLOCKE_MAX_SKEW_SECONDS', 300, 0, 86_400),
     maxEventBytes: integer(env, 'GLOCKE_MAX_EVENT_BYTES', 65_536, 1, 1_048_576),
     workerIntervalMs: integer(env, 'GLOCKE_WORKER_INTERVAL_MS', 1_000, 10, 3_600_000),

@@ -66,6 +66,51 @@ describe('inbox processing', () => {
     expect(repository.inbox[0]).toMatchObject({ status: 'processed', leaseId: null })
   })
 
+  it('checks the lease using a timestamp captured after recipient resolution', async () => {
+    repository.seedInbox(inboxRecord())
+    let current = new Date('2026-08-07T10:00:00.000Z')
+    const worker = createProcessor({
+      repository,
+      resolveRecipient: async (userId) => {
+        current = new Date('2026-08-07T10:00:31.000Z')
+        return { userId, notifyInApp: true }
+      },
+      now: () => current,
+      createLeaseId: () => 'lease-1',
+      leaseMs: 30_000,
+    })
+
+    expect(await worker.processNext()).toBe('idle')
+    expect(repository.notifications).toHaveLength(0)
+    expect(repository.inbox[0]).toMatchObject({ status: 'processing', leaseId: 'lease-1' })
+  })
+
+  it('captures a fresh completion timestamp after notification materialization', async () => {
+    repository.seedInbox(inboxRecord())
+    let current = new Date('2026-08-07T10:00:00.000Z')
+    const createNotification = repository.createNotification.bind(repository)
+    repository.createNotification = async (...args) => {
+      const result = await createNotification(...args)
+      current = new Date('2026-08-07T10:00:31.000Z')
+      return result
+    }
+    const worker = createProcessor({
+      repository,
+      resolveRecipient: async (userId) => {
+        current = new Date('2026-08-07T10:00:10.000Z')
+        return { userId, notifyInApp: true }
+      },
+      now: () => current,
+      createId: () => 'notification-1',
+      createLeaseId: () => 'lease-1',
+      leaseMs: 30_000,
+    })
+
+    expect(await worker.processNext()).toBe('idle')
+    expect(repository.notifications).toHaveLength(1)
+    expect(repository.inbox[0]).toMatchObject({ status: 'processing', leaseId: 'lease-1' })
+  })
+
   it('enforces notification uniqueness by event and recipient', async () => {
     repository.seedInbox(inboxRecord())
     repository.seedNotification(notificationRecord())
@@ -160,5 +205,96 @@ describe('inbox processing', () => {
       body: 'Цель «Резервный фонд» достигнута.',
       actionUrl: '/goals',
     })
+  })
+
+  it.each([
+    {
+      case: 'unsupported type',
+      envelope: eventEnvelope({ type: 'tafel.task.legacy.v0' }),
+      source: 'tafel',
+    },
+    {
+      case: 'type owned by another source',
+      envelope: eventEnvelope({ source: 'kuvert', type: 'tafel.task.due.v1' }),
+      source: 'kuvert',
+    },
+    {
+      case: 'malformed registered payload',
+      envelope: eventEnvelope({ payload: { recipientId: 'user-1', taskTitle: 'Старая задача' } }),
+      source: 'tafel',
+    },
+  ])('settles a persisted $case and continues to a later valid event', async ({ envelope, source }) => {
+    repository.seedInbox(inboxRecord({
+      eventId: '10000000-0000-4000-8000-000000000010',
+      envelope: { ...envelope, id: '10000000-0000-4000-8000-000000000010' },
+      source,
+    }))
+    repository.seedInbox(inboxRecord({
+      eventId: '10000000-0000-4000-8000-000000000011',
+      envelope: eventEnvelope({ id: '10000000-0000-4000-8000-000000000011' }),
+    }))
+    const resolved: string[] = []
+    const worker = createProcessor({
+      repository,
+      resolveRecipient: async (userId) => {
+        resolved.push(userId)
+        return { userId, notifyInApp: true }
+      },
+      now: () => new Date('2026-08-07T10:00:02.000Z'),
+      createId: () => 'notification-valid',
+      createLeaseId: () => crypto.randomUUID(),
+    })
+
+    expect(await worker.processNext()).toBe('processed')
+    expect(repository.inbox[0]).toMatchObject({ status: 'processed', leaseId: null })
+    expect(repository.notifications).toHaveLength(0)
+    expect(resolved).toEqual([])
+
+    expect(await worker.processNext()).toBe('processed')
+    expect(repository.inbox[1]).toMatchObject({ status: 'processed', leaseId: null })
+    expect(repository.notifications).toEqual([
+      expect.objectContaining({ id: 'notification-valid', eventId: '10000000-0000-4000-8000-000000000011' }),
+    ])
+    expect(resolved).toEqual(['user-1'])
+  })
+
+  it('uses trusted source origins for Kuvert and Tafel actions while keeping password settings local', async () => {
+    const envelopes = [
+      eventEnvelope({
+        id: '10000000-0000-4000-8000-000000000020',
+        source: 'kuvert',
+        type: 'kuvert.goal.completed.v1',
+        payload: { recipientId: 'user-1', goalName: 'Резервный фонд' },
+      }),
+      eventEnvelope({ id: '10000000-0000-4000-8000-000000000021' }),
+      eventEnvelope({
+        id: '10000000-0000-4000-8000-000000000022',
+        source: 'schlussel',
+        type: 'schlussel.security.password_changed.v1',
+        payload: { recipientId: 'user-1' },
+      }),
+    ]
+    for (const envelope of envelopes) repository.seedInbox(inboxRecord({ envelope }))
+    let notificationIndex = 0
+    const worker = createProcessor({
+      repository,
+      resolveRecipient: async (userId) => ({ userId, notifyInApp: true }),
+      sourceOrigins: {
+        kuvert: 'https://kuvert.example.test',
+        tafel: 'https://tafel.example.test',
+      },
+      now: () => new Date('2026-08-07T10:00:02.000Z'),
+      createId: () => `notification-${notificationIndex += 1}`,
+      createLeaseId: () => crypto.randomUUID(),
+    })
+
+    expect(await worker.processNext()).toBe('processed')
+    expect(await worker.processNext()).toBe('processed')
+    expect(await worker.processNext()).toBe('processed')
+    expect(repository.notifications.map(({ source, actionUrl }) => ({ source, actionUrl }))).toEqual([
+      { source: 'kuvert', actionUrl: 'https://kuvert.example.test/goals' },
+      { source: 'tafel', actionUrl: 'https://tafel.example.test/tasks' },
+      { source: 'schlussel', actionUrl: '/settings' },
+    ])
   })
 })

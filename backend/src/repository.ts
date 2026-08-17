@@ -22,12 +22,19 @@ function cursorDecode(cursor: string): [Date, string] | null {
 }
 
 function inboxRecord(row: typeof inboxEvents.$inferSelect): InboxRecord {
+  let envelope: EventEnvelope
+  try {
+    envelope = JSON.parse(row.envelope) as EventEnvelope
+  } catch {
+    // Preserve row identity so the processor can lease-fence and suppress it.
+    envelope = null as unknown as EventEnvelope
+  }
   return {
     eventId: row.eventId,
     source: row.source,
     userId: row.userId,
     payloadHash: row.payloadHash,
-    envelope: JSON.parse(row.envelope) as EventEnvelope,
+    envelope,
     status: row.status,
     acceptedAt: row.acceptedAt.toISOString(),
     processedAt: row.processedAt?.toISOString() ?? null,

@@ -116,6 +116,13 @@ describe('POST /internal/v1/events', () => {
     expect(repository.inbox).toHaveLength(0)
   })
 
+  it('rejects unknown top-level envelope fields', async () => {
+    const envelope = { ...eventEnvelope(), unexpected: 'not in the transport contract' }
+
+    expect((await app.request('/internal/v1/events', signedEventRequest(envelope))).status).toBe(400)
+    expect(repository.inbox).toHaveLength(0)
+  })
+
   it.each([
     ['tafel', 'kuvert.goal.completed.v1'],
     ['kuvert', 'tafel.task.due.v1'],
@@ -200,6 +207,32 @@ describe('POST /internal/v1/events', () => {
     )
 
     expect(response.status).toBe(403)
+    expect(repository.inbox).toHaveLength(0)
+  })
+
+  it.each(['constructor', 'toString'])('returns 403 for inherited source key %s without throwing', async (source) => {
+    const response = await app.request(
+      '/internal/v1/events',
+      signedEventRequest(eventEnvelope({ source })),
+    )
+
+    expect(response.status).toBe(403)
+    expect(repository.inbox).toHaveLength(0)
+  })
+
+  it.each([
+    ['recipientId', 'kuvert', 'kuvert.goal.completed.v1', { recipientId: ' \t\n ', goalName: 'Резервный фонд' }],
+    ['goalName', 'kuvert', 'kuvert.goal.completed.v1', { recipientId: 'user-1', goalName: ' \t\n ' }],
+    ['taskTitle', 'tafel', 'tafel.task.due.v1', { recipientId: 'user-1', taskTitle: ' \t\n ', dueDate: '2026-08-08', overdue: false }],
+    ['sourceTitle', 'zettel', 'zettel.note.backlink_added.v1', { recipientId: 'user-1', sourceTitle: ' \t\n ', targetTitle: 'Glocke' }],
+    ['targetTitle', 'zettel', 'zettel.note.backlink_added.v1', { recipientId: 'user-1', sourceTitle: 'Архитектура', targetTitle: ' \t\n ' }],
+  ])('rejects whitespace-only payload text at %s', async (_field, source, type, payload) => {
+    const response = await app.request(
+      '/internal/v1/events',
+      signedEventRequest(eventEnvelope({ source, type, payload })),
+    )
+
+    expect(response.status).toBe(400)
     expect(repository.inbox).toHaveLength(0)
   })
 

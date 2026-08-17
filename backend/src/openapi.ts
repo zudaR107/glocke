@@ -69,13 +69,13 @@ const eventEnvelopeVariants = eventRegistry.map((registered) => z.object({
 
 registry.registerPath({
   method: 'post', path: '/internal/v1/events', tags: ['internal'], summary: 'Accept a signed notification event',
-  description: 'Authenticates the exact request body bytes and configured producer identity before durably writing the inbox. The envelope must match one of the registered (source, type) contracts exactly - an unregistered type, a type claimed by the wrong source, or a payload with unexpected/missing fields is rejected. A new event returns 202, an exact byte-for-byte replay of the same source and event id returns 200, and identity reuse with different bytes returns 409. Producers may retry with the same stable event id; this is idempotent intake, not an exactly-once delivery guarantee.',
+  description: 'Authenticates the exact request body bytes and configured producer identity before durably writing the inbox. The envelope must match one of the registered (source, type) contracts exactly - an unregistered type, a type claimed by the wrong source, a whitespace-only identifier/text value, or a payload with unexpected/missing fields is rejected. Glocke renders presentation centrally; Kuvert and Tafel actions use trusted configured HTTPS origins. A new event returns 202, an exact byte-for-byte replay of the same source and event id returns 200, and identity reuse with different bytes returns 409. Producers may retry with the same stable event id; this is idempotent intake, not an exactly-once delivery guarantee.',
   security: [{ hofHmac: [] }],
   request: { body: { content: { 'application/json': { schema: z.union(eventEnvelopeVariants) } } } },
   responses: {
     202: { description: 'Durably accepted as a new inbox event' },
     200: { description: 'Exact duplicate; no second inbox row was created' },
-    400: { description: 'Invalid JSON, envelope, source/type relationship, payload, or action URL' },
+    400: { description: 'Invalid JSON, envelope, source/type relationship, or payload' },
     401: { description: 'Missing, malformed, stale, or invalid signature' },
     403: { description: 'Source producer is not configured' },
     409: { description: 'The source and event id already exist with different exact body bytes' },

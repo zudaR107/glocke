@@ -11,6 +11,8 @@ import { z } from 'zod'
 import type { Authenticate, EventEnvelope, NotificationRepository } from './contracts.js'
 import { eventRegistryByType } from './event-registry.js'
 
+const strictNotificationEventEnvelopeSchema = notificationEventEnvelopeSchema.strict()
+
 export interface ProducerCredential {
   keyId: string
   secret: string
@@ -98,7 +100,7 @@ export function createApp(options: CreateAppOptions): Hono<ExportAuthEnv> {
       !context.req.header('X-Hof-Timestamp') ||
       !context.req.header('X-Hof-Signature')
     ) return context.json({ error: 'Missing signature' }, 401)
-    const producer = producers[source]
+    const producer = Object.hasOwn(producers, source) ? producers[source] : undefined
     if (!producer) return context.json({ error: 'Producer is not configured' }, 403)
 
     const timestamp = Number(context.req.header('X-Hof-Timestamp'))
@@ -125,7 +127,7 @@ export function createApp(options: CreateAppOptions): Hono<ExportAuthEnv> {
     } catch {
       return context.json({ error: 'Invalid JSON' }, 400)
     }
-    const parsed = notificationEventEnvelopeSchema.safeParse(json)
+    const parsed = strictNotificationEventEnvelopeSchema.safeParse(json)
     if (!parsed.success || parsed.data.source !== source) {
       return context.json({ error: 'Invalid event envelope' }, 400)
     }

@@ -26,14 +26,16 @@ React frontend. Shared auth, transport, and UI come from the
   raw body is authenticated with `X-Hof-Service`, `X-Hof-Key-Id`,
   `X-Hof-Timestamp`, and `X-Hof-Signature`, using one dedicated credential per
   configured producer.
-- Glocke verifies the signature and envelope before writing the event. The
+- Glocke verifies the signature and strict envelope before writing the event;
+  unknown top-level or payload fields are rejected. The
   durable inbox primary key is `(source, event_id)`: a newly stored body
   returns `202`, an exact byte-for-byte replay returns `200`, and reuse of the
   same identity with different bytes returns `409`.
 - A background worker claims inbox rows with expiring, fenced leases. The
   unique key `(source, event_id, user_id)` permits at most one stored in-app
   notification for an event and recipient, including when a worker retries
-  after creating the notification but before completing the inbox row.
+  after creating the notification but before completing the inbox row. Fresh
+  lease checks fence both materialization and subsequent inbox completion.
 - Before materialization, Glocke makes a separately signed internal request to Schlüssel and uses the recipient's current `notifyInApp` value. Disabled delivery and deleted recipients are suppressed and completed.
 - Public routes derive ownership only from the verified JWT. They provide cursor pagination, unread count, read, read-all, and delete.
 - `GET /exports/me` returns a standardized versioned JSON snapshot containing every caller-owned notification and its read state. It accepts either a normal Glocke access token or a Schlüssel export delegation scoped to `data:export` with the exact `hof-service:glocke` audience. Inbox payloads and hashes, worker leases, local user rows, and runtime credentials are never included.
@@ -127,7 +129,7 @@ seconds.
 
 ### Event registry
 
-`src/event-registry.ts` is the single source of truth for every `(source, type)`
+`backend/src/event-registry.ts` is the single source of truth for every `(source, type)`
 pair this deployment accepts: it drives payload validation at intake, Russian
 rendering at processing, the four `oneOf` request-body contracts in
 `GET /openapi.json`, and (via `GLOCKE_EVENT_SOURCES`) which producer secrets
@@ -141,8 +143,8 @@ registered events:
 | Type | Source | Payload | Rendered action |
 |---|---|---|---|
 | `schlussel.security.password_changed.v1` | `schlussel` | `recipientId` | `/settings` |
-| `kuvert.goal.completed.v1` | `kuvert` | `recipientId`, `goalName` | `/goals` |
-| `tafel.task.due.v1` | `tafel` | `recipientId`, `taskTitle`, `dueDate`, `overdue` | `/tasks` |
+| `kuvert.goal.completed.v1` | `kuvert` | `recipientId`, `goalName` | `<KUVERT_ORIGIN>/goals` |
+| `tafel.task.due.v1` | `tafel` | `recipientId`, `taskTitle`, `dueDate`, `overdue` | `<TAFEL_ORIGIN>/tasks` |
 | `zettel.note.backlink_added.v1` | `zettel` | `recipientId`, `sourceTitle`, `targetTitle` | none |
 
 ## Local development
@@ -167,6 +169,8 @@ export SCHLUSSEL_JWKS_URL=http://localhost:4000/.well-known/jwks.json
 export SCHLUSSEL_INTERNAL_URL=http://localhost:4000
 export JWT_ISSUER=schlussel
 export ALLOWED_ORIGINS=http://localhost:5177
+export KUVERT_ORIGIN=http://localhost:5174
+export TAFEL_ORIGIN=http://localhost:5175
 export GLOCKE_EVENT_SOURCES=schlussel,kuvert,tafel,zettel
 export GLOCKE_SOURCE_KEY_ID_SCHLUSSEL=schlussel-v1
 export GLOCKE_SOURCE_SECRET_SCHLUSSEL='<same value as Schlussel SCHLUSSEL_TO_GLOCKE_HMAC_SECRET>'
@@ -196,6 +200,8 @@ The Settings page downloads the current user's Glocke snapshot directly as
 | `SCHLUSSEL_JWKS_URL` / `JWT_ISSUER` | Schlüssel JWKS endpoint and exact expected JWT issuer |
 | `SCHLUSSEL_INTERNAL_URL` | Origin used for signed recipient-preference lookups |
 | `ALLOWED_ORIGINS` | Direct-run comma-separated CORS origins; Compose maps `GLOCKE_ALLOWED_ORIGINS` to it |
+| `KUVERT_ORIGIN` / `TAFEL_ORIGIN` | Direct-run exact trusted origins used to render absolute source action links; HTTPS is required except for `localhost`, `127.0.0.1`, or `[::1]` development origins |
+| `KUVERT_URL` / `TAFEL_URL` | Compose/Tor public service origins mapped to backend `KUVERT_ORIGIN` / `TAFEL_ORIGIN` |
 | `GLOCKE_EVENT_SOURCES` | Comma-separated, unique lowercase producer service names |
 | `GLOCKE_SOURCE_KEY_ID_<SOURCE>` / `GLOCKE_SOURCE_SECRET_<SOURCE>` | Runtime credential for each source; hyphens in the uppercased source become underscores |
 | `GLOCKE_TO_SCHLUSSEL_HMAC_KEY_ID` / `GLOCKE_TO_SCHLUSSEL_HMAC_SECRET` | Separate outbound credential for Schlüssel recipient lookups |
@@ -215,7 +221,7 @@ secrets/signatures into issues or logs. Glocke requires every secret to be at
 least 32 bytes and rejects duplicate configured secrets at startup.
 
 To add a future producer, first register its event type(s) in
-`src/event-registry.ts` (source, payload schema, Russian rendering) — `loadConfig`
+`backend/src/event-registry.ts` (source, payload schema, Russian rendering) — `loadConfig`
 rejects any name in `GLOCKE_EVENT_SOURCES` that the registry doesn't recognize.
 Then add its lowercase source name to `GLOCKE_EVENT_SOURCES`, configure its
 generated `GLOCKE_SOURCE_KEY_ID_<SOURCE>` and `GLOCKE_SOURCE_SECRET_<SOURCE>`
@@ -224,14 +230,14 @@ same key ID and secret in that producer.
 
 ## Docker and Tor
 
-For this repo's Compose project, create the shared network once, replace both
+For this repo's Compose project, create the shared network once, replace all five
 secret placeholders in `.env` with independently generated values, and ensure
-the separately deployed Schlüssel services use those same directional values:
+the separately deployed producer services use those same directional values:
 
 ```sh
 docker network create schloss-net
 cp .env.example .env
-# Run `openssl rand -base64 32` twice and put one result in each HMAC secret.
+# Run `openssl rand -base64 32` five times and put one result in each HMAC secret.
 docker compose up -d --build
 ```
 
@@ -240,15 +246,15 @@ Compose services are `glocke-backend` and `glocke-frontend`; persistent state us
 For the complete local platform, run Compose from the sibling `tor/` repo
 instead. Its Compose file includes Glocke and routes
 `https://glocke.localhost` to `glocke-frontend`. Set
-`SCHLUSSEL_TO_GLOCKE_HMAC_SECRET` and `GLOCKE_TO_SCHLUSSEL_HMAC_SECRET` in
-`tor/.env` before startup; the included Schlüssel and Glocke Compose files
-consume the same values.
+all four producer-to-Glocke secrets and `GLOCKE_TO_SCHLUSSEL_HMAC_SECRET` in
+`tor/.env` before startup; the included producer and Glocke Compose files
+consume the same directional values.
 
 ```sh
 cd ../tor
 docker network create schloss-net  # one-time; skip if it already exists
 cp .env.example .env
-# Add two independently generated HMAC secrets to .env, then:
+# Add five independently generated HMAC secrets to .env, then:
 docker compose up -d --build
 ```
 
@@ -261,6 +267,8 @@ HTTPS with its local CA; follow Tor's README to trust that CA in the browser.
 - `GET /exports/me` accepts normal access JWTs and delegated export JWTs; delegated tokens are rejected by all ordinary notification APIs.
 - `GET /openapi.json` requires an authenticated administrator. The frontend exposes it at admin-only `/docs`.
 - Migrations run at startup. Generate schema changes with `pnpm db:generate`.
+- The action-link hardening migration clears links stored before the central
+  event registry; new links are rendered only from trusted configured origins.
 - `SIGINT` and `SIGTERM` stop the HTTP server and new worker claims, wait for the active worker, then close SQLite. A 10-second fail-safe exits nonzero if graceful shutdown does not finish.
 
 ## Verification

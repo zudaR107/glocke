@@ -12,6 +12,7 @@ import type { NotificationRecord } from '../contracts.js'
 import * as schema from '../db/schema.js'
 import { notifications } from '../db/schema.js'
 import { SqliteNotificationRepository } from '../repository.js'
+import { createProcessor } from '../processor.js'
 import { EVENT_SECRET, eventEnvelope, inboxRecord, notificationRecord, signedEventRequest } from './helpers/fixtures.js'
 
 describe('SqliteNotificationRepository', () => {
@@ -77,6 +78,35 @@ describe('SqliteNotificationRepository', () => {
     expect(await repository.markInboxProcessed(
       renewed!.source, renewed!.eventId, 'lease-new', '2026-08-07T10:00:12.000Z',
     )).toBe(true)
+  })
+
+  it('claims and suppresses corrupt envelope JSON without starving later work', async () => {
+    sqlite.prepare(`INSERT INTO inbox_events
+      (source, event_id, user_id, payload_hash, envelope, status, accepted_at)
+      VALUES (?, ?, ?, ?, ?, 'pending', ?)`).run(
+      'tafel', '10000000-0000-4000-8000-000000000010', 'user-1', 'corrupt', '{',
+      new Date('2026-08-07T10:00:00.000Z').getTime(),
+    )
+    await repository.acceptInbox(inboxRecord({
+      eventId: '10000000-0000-4000-8000-000000000011',
+      envelope: eventEnvelope({ id: '10000000-0000-4000-8000-000000000011' }),
+      acceptedAt: '2026-08-07T10:00:01.000Z',
+    }))
+    const processor = createProcessor({
+      repository,
+      resolveRecipient: async (userId) => ({ userId, notifyInApp: true }),
+      now: () => new Date('2026-08-07T10:00:02.000Z'),
+      createId: () => 'notification-valid',
+      createLeaseId: randomUUID,
+    })
+
+    expect(await processor.processNext()).toBe('processed')
+    expect(sqlite.prepare(`SELECT status FROM inbox_events WHERE event_id =
+      '10000000-0000-4000-8000-000000000010'`).get()).toEqual({ status: 'processed' })
+    expect(await processor.processNext()).toBe('processed')
+    expect(await repository.listNotifications('user-1', null, 10)).toMatchObject({
+      items: [expect.objectContaining({ id: 'notification-valid' })],
+    })
   })
 
   it('paginates, reads, counts, and deletes only caller-owned notifications', async () => {
