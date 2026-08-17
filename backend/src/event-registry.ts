@@ -13,8 +13,8 @@ import { z } from 'zod'
 // for free - no need for a hand-rolled round-trip check.
 const isoDate = z.iso.date()
 
-const recipientId = z.string().min(1).max(4_000)
-const shortText = z.string().min(1).max(4_000)
+const recipientId = z.string().trim().min(1).max(4_000)
+const shortText = z.string().trim().min(1).max(4_000)
 
 export interface EventRegistryEntry<Payload extends z.ZodTypeAny = z.ZodTypeAny> {
   type: string

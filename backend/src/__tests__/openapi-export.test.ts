@@ -78,6 +78,7 @@ describe('export OpenAPI contract', () => {
     }
     for (const [type, fields] of Object.entries(expected)) {
       const variant = contracts[type]
+      expect(variant.additionalProperties).toBe(false)
       expect(variant.properties.source.enum).toEqual([type.split('.')[0]])
       expect(variant.properties.payload.required.sort()).toEqual([...fields].sort())
       expect(variant.properties.payload.additionalProperties).toBe(false)
@@ -85,7 +86,9 @@ describe('export OpenAPI contract', () => {
       expect(variant.properties.payload.properties).not.toHaveProperty('body')
       expect(variant.properties.payload.properties).not.toHaveProperty('actionUrl')
       for (const field of fields.filter((field) => field !== 'overdue' && field !== 'dueDate')) {
-        expect(variant.properties.payload.properties[field].maxLength).toBeGreaterThan(0)
+        expect(variant.properties.payload.properties[field]).toMatchObject({
+          type: 'string', minLength: 1, maxLength: 4_000,
+        })
       }
     }
     expect(contracts['tafel.task.due.v1'].properties.payload.properties.dueDate).toMatchObject({

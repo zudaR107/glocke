@@ -79,7 +79,14 @@ app.use('*', createCorsMiddleware({
 }))
 app.route('/', service)
 
-const processor = createProcessor({ repository, resolveRecipient, createId, createLeaseId: createId, leaseMs: config.workerLeaseMs })
+const processor = createProcessor({
+  repository,
+  resolveRecipient,
+  sourceOrigins: config.sourceOrigins,
+  createId,
+  createLeaseId: createId,
+  leaseMs: config.workerLeaseMs,
+})
 const workerIntervalMs = config.workerIntervalMs
 let workerStopped = false
 let workerRunning = false

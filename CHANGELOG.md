@@ -21,10 +21,18 @@
   notifications and read state, with a shared Settings download action. This
   remains a synchronous Glocke-only endpoint; asynchronous all-services ZIP
   orchestration and artifact retention are owned by Schlüssel.
+- Registered notification intake from Schlüssel, Kuvert, Tafel, and Zettel,
+  with strict payload validation and centrally rendered source actions.
+- Hardened producer credential lookup, persisted-envelope suppression, trimmed
+  payload text, and trusted absolute Kuvert/Tafel action origins.
+- Cleared pre-registry stored action links on migration, made corrupt inbox JSON
+  suppressible, fenced completion after recipient I/O, and reused Tor's public
+  Kuvert/Tafel URL variables in Compose.
+- Rejected unknown top-level event fields and refreshed lease fencing after
+  notification materialization before inbox completion.
 
 ### Planned
 
-- Roll out transactional producer outboxes to every Hof service.
 - Add the global Glocke bell and unread state to the shared Hof Header.
 - Add Browser Push with a Glocke-owned service worker and VAPID configuration.
 - Add the Telegram bot and secure account-linking flow.

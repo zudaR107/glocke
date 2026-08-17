@@ -1,5 +1,5 @@
 # One-time setup: create the external `schloss-net`, initialize submodules,
-# copy .env.example to .env, and replace both HMAC placeholders with distinct
+# copy .env.example to .env, and replace all five HMAC placeholders with distinct
 # generated secrets. Neither service publishes a host port; use the sibling
 # tor gateway for browser access.
 services:
@@ -17,6 +17,8 @@ services:
       GLOCKE_TO_SCHLUSSEL_HMAC_SECRET: ${GLOCKE_TO_SCHLUSSEL_HMAC_SECRET:?set GLOCKE_TO_SCHLUSSEL_HMAC_SECRET}
       JWT_ISSUER: ${JWT_ISSUER:-schlussel}
       ALLOWED_ORIGINS: ${GLOCKE_ALLOWED_ORIGINS:-https://localhost,https://glocke.localhost}
+      KUVERT_ORIGIN: ${KUVERT_URL:-https://kuvert.localhost}
+      TAFEL_ORIGIN: ${TAFEL_URL:-https://tafel.localhost}
       GLOCKE_EVENT_SOURCES: ${GLOCKE_EVENT_SOURCES:-schlussel,kuvert,tafel,zettel}
       GLOCKE_SOURCE_KEY_ID_SCHLUSSEL: ${SCHLUSSEL_TO_GLOCKE_HMAC_KEY_ID:-schlussel-v1}
       GLOCKE_SOURCE_SECRET_SCHLUSSEL: ${SCHLUSSEL_TO_GLOCKE_HMAC_SECRET:?set SCHLUSSEL_TO_GLOCKE_HMAC_SECRET}

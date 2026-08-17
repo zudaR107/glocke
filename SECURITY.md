@@ -28,6 +28,11 @@ Highest-priority reports include cross-account notification access, signature by
 - Delivery is retry-based and deliberately does not claim exactly-once
   semantics. A producer may resend after an ambiguous response, while Glocke's
   inbox and notification unique keys prevent duplicate stored materialization.
+  Materialization and completion use separate fresh lease-fencing timestamps.
+- Presentation is never accepted from producers. Glocke validates persisted
+  envelopes again before processing, suppresses malformed rows, renders source
+  links from trusted origins, and clears pre-registry stored action links during
+  migration.
 
 Generate secrets with a cryptographically secure tool such as
 `openssl rand -base64 32`. Do not send tokens, raw HMAC secrets, signatures, or

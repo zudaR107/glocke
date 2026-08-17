@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { loadConfig } from '../config.js'
 
 function validEnv(): NodeJS.ProcessEnv {
   return {
     PORT: '3004', DATABASE_PATH: '/tmp/glocke.db', SCHLUSSEL_JWKS_URL: 'http://schlussel/jwks',
     JWT_ISSUER: 'schlussel', SCHLUSSEL_INTERNAL_URL: 'http://schlussel:4000',
+    KUVERT_ORIGIN: 'https://kuvert.example.test', TAFEL_ORIGIN: 'https://tafel.example.test',
     GLOCKE_TO_SCHLUSSEL_HMAC_KEY_ID: 'glocke-v1',
     GLOCKE_TO_SCHLUSSEL_HMAC_SECRET: 'glocke-to-schlussel-secret-32-bytes',
     ALLOWED_ORIGINS: 'https://glocke.localhost', GLOCKE_EVENT_SOURCES: 'schlussel,kuvert,tafel,zettel',
@@ -24,6 +26,10 @@ describe('runtime configuration', () => {
     expect(loadConfig(validEnv())).toMatchObject({
       port: 3004, schlusselKeyId: 'glocke-v1', recipientFetchTimeoutMs: 5_000,
       workerLeaseMs: 30_000,
+      sourceOrigins: {
+        kuvert: 'https://kuvert.example.test',
+        tafel: 'https://tafel.example.test',
+      },
       producers: {
         schlussel: { keyId: 'schlussel-v1' },
         kuvert: { keyId: 'kuvert-v1' },
@@ -92,5 +98,33 @@ describe('runtime configuration', () => {
       GLOCKE_SOURCE_KEY_ID_UNKNOWN: 'unknown-v1',
       GLOCKE_SOURCE_SECRET_UNKNOWN: 'unknown-to-glocke-secret-with-32-bytes',
     })).toThrow(/registry|unsupported|unknown/i)
+  })
+
+  it.each([
+    ['KUVERT_ORIGIN', 'not-a-url'],
+    ['KUVERT_ORIGIN', 'http://kuvert.example.test'],
+    ['KUVERT_ORIGIN', 'https://user:password@kuvert.example.test'],
+    ['TAFEL_ORIGIN', 'http://tafel.example.test'],
+    ['TAFEL_ORIGIN', 'https://tafel.example.test/tasks'],
+    ['TAFEL_ORIGIN', 'https://tafel.example.test?view=tasks'],
+  ])('rejects malformed or non-HTTPS action origin %s=%s', (name, value) => {
+    expect(() => loadConfig({ ...validEnv(), [name]: value })).toThrow(/origin|HTTPS/i)
+  })
+
+  it('accepts HTTP action origins only for direct localhost development', () => {
+    expect(loadConfig({
+      ...validEnv(),
+      KUVERT_ORIGIN: 'http://localhost:5174',
+      TAFEL_ORIGIN: 'http://127.0.0.1:5175',
+    }).sourceOrigins).toEqual({
+      kuvert: 'http://localhost:5174',
+      tafel: 'http://127.0.0.1:5175',
+    })
+  })
+
+  it('maps Tor public URL variables into backend action origins in Compose', () => {
+    const compose = readFileSync(new URL('../../../docker-compose.yml', import.meta.url), 'utf8')
+    expect(compose).toContain('KUVERT_ORIGIN: ${KUVERT_URL:-https://kuvert.localhost}')
+    expect(compose).toContain('TAFEL_ORIGIN: ${TAFEL_URL:-https://tafel.localhost}')
   })
 })
