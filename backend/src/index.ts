@@ -2,19 +2,16 @@ import { serve } from '@hono/node-server'
 import { createId } from '@paralleldrive/cuid2'
 import {
   createAuthMiddleware,
-  createCorsMiddleware,
   createExportAuthMiddleware,
 } from '@zudar107/schloss-server-kit'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { sql } from 'drizzle-orm'
-import { Hono } from 'hono'
-import { bodyLimit } from 'hono/body-limit'
-import { logger } from 'hono/logger'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createApp } from './app.js'
 import { db, sqlite } from './db/index.js'
 import { users } from './db/schema.js'
+import { createHttpApp } from './http.js'
 import { createProcessor } from './processor.js'
 import { SqliteNotificationRepository } from './repository.js'
 import { createSchlusselRecipientResolver } from './schlussel.js'
@@ -68,16 +65,7 @@ const service = createApp({
   },
 })
 
-const app = new Hono()
-app.use('*', bodyLimit({
-  maxSize: 1024 * 1024,
-  onError: (context) => context.json({ error: 'Request body too large' }, 413),
-}))
-app.use('*', logger())
-app.use('*', createCorsMiddleware({
-  allowedOrigins: config.allowedOrigins,
-}))
-app.route('/', service)
+const app = createHttpApp(service, config.allowedOrigins)
 
 const processor = createProcessor({
   repository,

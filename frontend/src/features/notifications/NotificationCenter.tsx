@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Bell, CheckCheck, ExternalLink, RefreshCw, Trash2 } from 'lucide-react'
-import { Badge, Button, EmptyState } from '@zudar107/schloss-ui'
+import { Badge, Button, EmptyState, invalidateNotificationUnreadCount } from '@zudar107/schloss-ui'
 import {
   deleteNotification,
   getUnreadCount,
@@ -41,6 +41,7 @@ export function NotificationCenter() {
       const updated = await markNotificationRead(notification.id)
       setItems((current) => current.map((item) => item.id === updated.id ? updated : item))
       setUnread((current) => Math.max(0, current - 1))
+      invalidateNotificationUnreadCount()
     } catch {
       setMutationError('Не удалось отметить уведомление прочитанным.')
     }
@@ -52,6 +53,7 @@ export function NotificationCenter() {
       const readAt = new Date().toISOString()
       setItems((current) => current.map((item) => item.readAt ? item : { ...item, readAt }))
       setUnread(0)
+      invalidateNotificationUnreadCount()
     } catch {
       setMutationError('Не удалось отметить все уведомления прочитанными.')
     }
@@ -62,6 +64,7 @@ export function NotificationCenter() {
       await deleteNotification(notification.id)
       setItems((current) => current.filter((item) => item.id !== notification.id))
       if (!notification.readAt) setUnread((current) => Math.max(0, current - 1))
+      invalidateNotificationUnreadCount()
     } catch {
       setMutationError('Не удалось удалить уведомление.')
     }

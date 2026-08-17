@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { createCorsMiddleware } from '@zudar107/schloss-server-kit'
+import { Hono } from 'hono'
 import { loadConfig } from '../config.js'
+
+const LOCAL_FRONTEND_ORIGINS = [
+  'https://localhost',
+  'https://auth.localhost',
+  'https://kuvert.localhost',
+  'https://tafel.localhost',
+  'https://zettel.localhost',
+  'https://glocke.localhost',
+]
 
 function validEnv(): NodeJS.ProcessEnv {
   return {
@@ -126,5 +137,49 @@ describe('runtime configuration', () => {
     const compose = readFileSync(new URL('../../../docker-compose.yml', import.meta.url), 'utf8')
     expect(compose).toContain('KUVERT_ORIGIN: ${KUVERT_URL:-https://kuvert.localhost}')
     expect(compose).toContain('TAFEL_ORIGIN: ${TAFEL_URL:-https://tafel.localhost}')
+  })
+
+  it('configures exact CORS access for every local Hof frontend', async () => {
+    const compose = readFileSync(new URL('../../../docker-compose.yml', import.meta.url), 'utf8')
+    const configuredDefault = compose.match(/ALLOWED_ORIGINS: \$\{GLOCKE_ALLOWED_ORIGINS:-([^}]+)}/)?.[1]
+    expect(configuredDefault).toBeDefined()
+
+    const config = loadConfig({ ...validEnv(), ALLOWED_ORIGINS: configuredDefault })
+    expect(config.allowedOrigins).toEqual(LOCAL_FRONTEND_ORIGINS)
+
+    const app = new Hono()
+    app.use('*', createCorsMiddleware({ allowedOrigins: config.allowedOrigins }))
+    app.get('/notifications/unread-count', (context) => context.json({ count: 0 }))
+
+    for (const origin of LOCAL_FRONTEND_ORIGINS) {
+      const response = await app.request('/notifications/unread-count', { headers: { Origin: origin } })
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe(origin)
+      expect(response.headers.get('Vary')).toContain('Origin')
+    }
+
+    const rejected = await app.request('/notifications/unread-count', {
+      headers: { Origin: 'https://unknown.localhost' },
+    })
+    expect(rejected.headers.get('Access-Control-Allow-Origin')).toBeNull()
+  })
+
+  it('allows Authorization in notification preflight responses and varies by Origin', async () => {
+    const app = new Hono()
+    app.use('*', createCorsMiddleware({ allowedOrigins: LOCAL_FRONTEND_ORIGINS }))
+    app.get('/notifications/unread-count', (context) => context.json({ count: 0 }))
+
+    const response = await app.request('/notifications/unread-count', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://tafel.localhost',
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'Authorization',
+      },
+    })
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://tafel.localhost')
+    expect(response.headers.get('Access-Control-Allow-Headers')).toContain('Authorization')
+    expect(response.headers.get('Vary')).toContain('Origin')
   })
 })

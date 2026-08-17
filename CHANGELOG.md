@@ -30,9 +30,13 @@
   Kuvert/Tafel URL variables in Compose.
 - Rejected unknown top-level event fields and refreshed lease fencing after
   notification materialization before inbox completion.
+- Added the shared Hof Header bell with same-origin unread polling and
+  mutation-driven invalidation after successful read, read-all, and delete.
+- Marked every notification API response private, no-store, no-cache, and
+  nosniff at the outermost HTTP layer, including preflight and early errors,
+  and allowed exact CORS access from every local Hof frontend origin.
 
 ### Planned
 
-- Add the global Glocke bell and unread state to the shared Hof Header.
 - Add Browser Push with a Glocke-owned service worker and VAPID configuration.
 - Add the Telegram bot and secure account-linking flow.

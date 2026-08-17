@@ -1,18 +1,25 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from '../app.js'
+import { createHttpApp } from '../http.js'
 import { notificationRecord } from './helpers/fixtures.js'
 import { MemoryNotificationRepository } from './helpers/repository.js'
 
 const USER_1_HEADERS = { Authorization: 'Bearer user-1-token' }
 const USER_2_HEADERS = { Authorization: 'Bearer user-2-token' }
 
+function expectPrivateNotificationResponse(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store')
+  expect(response.headers.get('Pragma')).toBe('no-cache')
+  expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
+}
+
 describe('notification APIs', () => {
   let repository: MemoryNotificationRepository
-  let app: ReturnType<typeof createApp>
+  let app: ReturnType<typeof createHttpApp>
 
   beforeEach(() => {
     repository = new MemoryNotificationRepository()
-    app = createApp({
+    const service = createApp({
       repository,
       sourceSecrets: {},
       authenticate: async (request) => {
@@ -22,6 +29,7 @@ describe('notification APIs', () => {
         return null
       },
     })
+    app = createHttpApp(service, ['https://tafel.localhost'], false)
   })
 
   it('lists newest notifications first and returns an opaque next cursor', async () => {
@@ -150,6 +158,61 @@ describe('notification APIs', () => {
 
     expect(response.status).toBe(204)
     expect(repository.notifications).toHaveLength(0)
+  })
+
+  it.each([
+    ['GET', '/notifications', 200],
+    ['GET', '/notifications/unread-count', 200],
+    ['POST', '/notifications/owned/read', 200],
+    ['POST', '/notifications/read-all', 200],
+    ['DELETE', '/notifications/owned', 204],
+    ['GET', '/notifications?limit=invalid', 400],
+    ['GET', '/notifications/missing', 404],
+  ])('marks %s %s responses private and non-cacheable', async (method, path, status) => {
+    repository.seedNotification(notificationRecord({ id: 'owned' }))
+
+    const response = await app.request(path, { method, headers: USER_1_HEADERS })
+
+    expect(response.status).toBe(status)
+    expectPrivateNotificationResponse(response)
+  })
+
+  it('marks unauthenticated notification responses private and non-cacheable', async () => {
+    const response = await app.request('/notifications/unread-count')
+
+    expect(response.status).toBe(401)
+    expectPrivateNotificationResponse(response)
+  })
+
+  it('marks CORS preflight responses private before CORS terminates the request', async () => {
+    const response = await app.request('/notifications/unread-count', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://tafel.localhost',
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'Authorization',
+      },
+    })
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://tafel.localhost')
+    expectPrivateNotificationResponse(response)
+  })
+
+  it('marks body-limit errors private before body parsing terminates the request', async () => {
+    const response = await app.request('/notifications/read-all', {
+      method: 'POST',
+      headers: {
+        ...USER_1_HEADERS,
+        'Content-Type': 'application/json',
+        'Content-Length': String(1024 * 1024 + 1),
+      },
+      body: '{}',
+    })
+
+    expect(response.status).toBe(413)
+    expect(await response.json()).toEqual({ error: 'Request body too large' })
+    expectPrivateNotificationResponse(response)
   })
 
   it.each([

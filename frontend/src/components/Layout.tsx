@@ -1,7 +1,8 @@
 import { Bell, CircleHelp, FileCode2, Settings } from 'lucide-react'
 import { Link, useLocation } from '@tanstack/react-router'
-import { Footer, Header, ThemeToggle } from '@zudar107/schloss-ui'
+import { Footer, Header, ThemeToggle, useUnreadNotifications } from '@zudar107/schloss-ui'
 import { useAuth } from '../hooks/useAuth'
+import { apiClient } from '../lib/api'
 import { buildSchluesselAccountUrl, buildSchluesselLogoutUrl } from '../lib/authRedirect'
 
 const schlossUrl = (import.meta.env.VITE_SCHLOSS_URL as string | undefined) ?? 'http://localhost:3000'
@@ -9,6 +10,11 @@ const schlossUrl = (import.meta.env.VITE_SCHLOSS_URL as string | undefined) ?? '
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth()
   const { pathname } = useLocation()
+  const notificationState = useUnreadNotifications({
+    glockeOrigin: window.location.origin,
+    userId: user?.id ?? null,
+    apiClient,
+  })
   const links = [
     { to: '/notifications', label: 'Уведомления', icon: Bell },
     { to: '/settings', label: 'Настройки', icon: Settings },
@@ -25,6 +31,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         logo={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>}
         homeHref={schlossUrl}
         user={user}
+        notifications={{ href: '/notifications', state: notificationState }}
         onSettings={() => { location.href = buildSchluesselAccountUrl(pathname) }}
         onLogout={() => void signOut()}
         rightSlot={<ThemeToggle />}
