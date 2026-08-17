@@ -16,7 +16,7 @@ services:
       GLOCKE_TO_SCHLUSSEL_HMAC_KEY_ID: ${GLOCKE_TO_SCHLUSSEL_HMAC_KEY_ID:-glocke-v1}
       GLOCKE_TO_SCHLUSSEL_HMAC_SECRET: ${GLOCKE_TO_SCHLUSSEL_HMAC_SECRET:?set GLOCKE_TO_SCHLUSSEL_HMAC_SECRET}
       JWT_ISSUER: ${JWT_ISSUER:-schlussel}
-      ALLOWED_ORIGINS: ${GLOCKE_ALLOWED_ORIGINS:-https://localhost,https://glocke.localhost}
+      ALLOWED_ORIGINS: ${GLOCKE_ALLOWED_ORIGINS:-https://localhost,https://auth.localhost,https://kuvert.localhost,https://tafel.localhost,https://zettel.localhost,https://glocke.localhost}
       KUVERT_ORIGIN: ${KUVERT_URL:-https://kuvert.localhost}
       TAFEL_ORIGIN: ${TAFEL_URL:-https://tafel.localhost}
       GLOCKE_EVENT_SOURCES: ${GLOCKE_EVENT_SOURCES:-schlussel,kuvert,tafel,zettel}

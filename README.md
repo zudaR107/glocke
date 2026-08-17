@@ -37,7 +37,8 @@ React frontend. Shared auth, transport, and UI come from the
   after creating the notification but before completing the inbox row. Fresh
   lease checks fence both materialization and subsequent inbox completion.
 - Before materialization, Glocke makes a separately signed internal request to Schlüssel and uses the recipient's current `notifyInApp` value. Disabled delivery and deleted recipients are suppressed and completed.
-- Public routes derive ownership only from the verified JWT. They provide cursor pagination, unread count, read, read-all, and delete.
+- Public routes derive ownership only from the verified JWT. They provide cursor pagination, unread count, read, read-all, and delete. Outermost middleware makes every `/notifications*` response, including preflight, body-limit, authentication, and routing responses, private, no-store, no-cache, and nosniff.
+- The shared Hof `Header` displays a Glocke bell and polls the unread count through its auth-safe shared hook. Glocke uses the same-origin `/backend` client and invalidates the shared count after successful read, read-all, and delete mutations.
 - `GET /exports/me` returns a standardized versioned JSON snapshot containing every caller-owned notification and its read state. It accepts either a normal Glocke access token or a Schlüssel export delegation scoped to `data:export` with the exact `hof-service:glocke` audience. Inbox payloads and hashes, worker leases, local user rows, and runtime credentials are never included.
 - SQLite starts in WAL mode with foreign-key enforcement and runs generated Drizzle migrations before serving.
 
@@ -199,7 +200,7 @@ The Settings page downloads the current user's Glocke snapshot directly as
 | `DATABASE_PATH` | Required SQLite path used by a direct backend run; Compose maps `GLOCKE_DATABASE_PATH` to it |
 | `SCHLUSSEL_JWKS_URL` / `JWT_ISSUER` | Schlüssel JWKS endpoint and exact expected JWT issuer |
 | `SCHLUSSEL_INTERNAL_URL` | Origin used for signed recipient-preference lookups |
-| `ALLOWED_ORIGINS` | Direct-run comma-separated CORS origins; Compose maps `GLOCKE_ALLOWED_ORIGINS` to it |
+| `ALLOWED_ORIGINS` | Exact direct-run comma-separated CORS origins; Compose maps `GLOCKE_ALLOWED_ORIGINS` to it and defaults to every local Hof frontend: `https://localhost`, `https://auth.localhost`, `https://kuvert.localhost`, `https://tafel.localhost`, `https://zettel.localhost`, and `https://glocke.localhost` |
 | `KUVERT_ORIGIN` / `TAFEL_ORIGIN` | Direct-run exact trusted origins used to render absolute source action links; HTTPS is required except for `localhost`, `127.0.0.1`, or `[::1]` development origins |
 | `KUVERT_URL` / `TAFEL_URL` | Compose/Tor public service origins mapped to backend `KUVERT_ORIGIN` / `TAFEL_ORIGIN` |
 | `GLOCKE_EVENT_SOURCES` | Comma-separated, unique lowercase producer service names |
@@ -286,14 +287,14 @@ git diff --check
 
 The foundation materializes in-app notifications, with the producer outbox
 and signed event contract now rolled out to every registered Hof service
-(Schlüssel, Kuvert, Tafel, Zettel). Follow-up work is ordered as follows:
+(Schlüssel, Kuvert, Tafel, Zettel). The shared Hof `Header` now includes a
+Glocke bell with auth-safe unread state. Follow-up work is ordered as follows:
 
-1. Add a global Glocke bell and unread state to the shared Hof `Header`.
-2. Add Browser Push through a Glocke-owned service worker and VAPID configuration.
-3. Add the Telegram bot and secure account-linking flow.
+1. Add Browser Push through a Glocke-owned service worker and VAPID configuration.
+2. Add the Telegram bot and secure account-linking flow.
 
-The global bell, Browser Push/service worker/VAPID, and Telegram bot/linking
-are explicitly not implemented by this foundation.
+Browser Push/service worker/VAPID and Telegram bot/linking remain explicitly
+deferred and are not implemented.
 
 ## License
 

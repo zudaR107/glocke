@@ -11,6 +11,13 @@ import {
   type Notification,
 } from '../lib/api'
 
+const invalidateNotificationUnreadCount = vi.hoisted(() => vi.fn())
+
+vi.mock('@zudar107/schloss-ui', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@zudar107/schloss-ui')>(),
+  invalidateNotificationUnreadCount,
+}))
+
 vi.mock('../lib/api', () => ({
   listNotifications: vi.fn(),
   getUnreadCount: vi.fn(),
@@ -31,6 +38,16 @@ const unreadNotification: Notification = {
   readAt: null,
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 describe('NotificationCenter', () => {
   beforeEach(() => {
     vi.mocked(listNotifications).mockReset()
@@ -38,6 +55,7 @@ describe('NotificationCenter', () => {
     vi.mocked(markNotificationRead).mockReset()
     vi.mocked(markAllNotificationsRead).mockReset()
     vi.mocked(deleteNotification).mockReset()
+    invalidateNotificationUnreadCount.mockReset()
     vi.mocked(getUnreadCount).mockResolvedValue(0)
   })
 
@@ -80,47 +98,85 @@ describe('NotificationCenter', () => {
 
   it('marks one notification read and updates its unread presentation', async () => {
     const user = userEvent.setup()
+    const mutation = deferred<Notification>()
     vi.mocked(listNotifications).mockResolvedValue({ items: [unreadNotification], nextCursor: null })
     vi.mocked(getUnreadCount).mockResolvedValue(1)
-    vi.mocked(markNotificationRead).mockResolvedValue({
-      ...unreadNotification,
-      readAt: '2026-08-07T10:05:00.000Z',
-    })
+    vi.mocked(markNotificationRead).mockReturnValue(mutation.promise)
 
     render(<NotificationCenter />)
     await user.click(await screen.findByRole('button', { name: /mark release is due as read/i }))
 
     expect(markNotificationRead).toHaveBeenCalledWith('notification-1')
+    expect(invalidateNotificationUnreadCount).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Unread notifications')).toHaveTextContent('1')
+
+    mutation.resolve({
+      ...unreadNotification,
+      readAt: '2026-08-07T10:05:00.000Z',
+    })
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /mark release is due as read/i })).not.toBeInTheDocument()
       expect(screen.queryByLabelText('Unread notifications')).not.toBeInTheDocument()
     })
+    expect(invalidateNotificationUnreadCount).toHaveBeenCalledOnce()
   })
 
   it('marks all notifications read', async () => {
     const user = userEvent.setup()
+    const mutation = deferred<number>()
     const second = { ...unreadNotification, id: 'notification-2', eventId: 'evt-2', title: 'Second event' }
     vi.mocked(listNotifications).mockResolvedValue({ items: [unreadNotification, second], nextCursor: null })
     vi.mocked(getUnreadCount).mockResolvedValue(2)
-    vi.mocked(markAllNotificationsRead).mockResolvedValue(2)
+    vi.mocked(markAllNotificationsRead).mockReturnValue(mutation.promise)
 
     render(<NotificationCenter />)
     await user.click(await screen.findByRole('button', { name: /mark all as read/i }))
 
     expect(markAllNotificationsRead).toHaveBeenCalledOnce()
+    expect(invalidateNotificationUnreadCount).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Unread notifications')).toHaveTextContent('2')
+
+    mutation.resolve(2)
     await waitFor(() => expect(screen.queryByLabelText('Unread notifications')).not.toBeInTheDocument())
+    expect(invalidateNotificationUnreadCount).toHaveBeenCalledOnce()
   })
 
   it('deletes a notification and removes it from the list', async () => {
     const user = userEvent.setup()
+    const mutation = deferred<void>()
     vi.mocked(listNotifications).mockResolvedValue({ items: [unreadNotification], nextCursor: null })
     vi.mocked(getUnreadCount).mockResolvedValue(1)
-    vi.mocked(deleteNotification).mockResolvedValue()
+    vi.mocked(deleteNotification).mockReturnValue(mutation.promise)
 
     render(<NotificationCenter />)
     await user.click(await screen.findByRole('button', { name: 'Удалить «Release is due»' }))
 
     expect(deleteNotification).toHaveBeenCalledWith('notification-1')
+    expect(invalidateNotificationUnreadCount).not.toHaveBeenCalled()
+    expect(screen.getByRole('article', { name: 'Release is due' })).toBeInTheDocument()
+
+    mutation.resolve()
     await waitFor(() => expect(screen.queryByRole('article', { name: 'Release is due' })).not.toBeInTheDocument())
+    expect(invalidateNotificationUnreadCount).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['read one', /mark release is due as read/i, markNotificationRead],
+    ['read all', /mark all as read/i, markAllNotificationsRead],
+    ['delete', 'Удалить «Release is due»', deleteNotification],
+  ] as const)('does not alter unread state or publish invalidation when %s fails', async (_name, buttonName, request) => {
+    const user = userEvent.setup()
+    vi.mocked(listNotifications).mockResolvedValue({ items: [unreadNotification], nextCursor: null })
+    vi.mocked(getUnreadCount).mockResolvedValue(1)
+    vi.mocked(request).mockRejectedValue(new Error('mutation failed'))
+
+    render(<NotificationCenter />)
+    await user.click(await screen.findByRole('button', { name: buttonName }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'Release is due' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Unread notifications')).toHaveTextContent('1')
+    expect(screen.getByRole('button', { name: /mark release is due as read/i })).toBeInTheDocument()
+    expect(invalidateNotificationUnreadCount).not.toHaveBeenCalled()
   })
 })
