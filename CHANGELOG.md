@@ -4,6 +4,14 @@
 
 ### Added
 
+- Browser Push delivery: `push_subscriptions`/`push_deliveries` tables,
+  materialization gated independently per channel alongside the existing
+  in-app notification write, a leased retry worker around `web-push` with
+  full-jitter backoff and 404/410 subscription cleanup, authenticated
+  `GET/PUT/DELETE /notifications/push/*` with owner isolation and a
+  provider-host allowlist, VAPID runtime configuration, and a push-only
+  service worker (`frontend/public/sw.js`) with generic notification
+  content and trusted-destination click handling. Disabled by default.
 - Standalone durable in-app notification service and Russian notification center.
 - Exact-body HMAC-SHA-256 ingestion for the shared v1 event envelope, with
   source/key/timestamp validation, bounded bodies, a durable idempotent inbox,

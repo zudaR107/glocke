@@ -38,9 +38,9 @@ export function createSchlusselRecipientResolver(options: ResolverOptions): Reso
     if (response.status === 404) return null
     if (!response.ok) throw new Error(`Schlussel recipient lookup failed with ${response.status}`)
     const body = await response.json() as Record<string, unknown>
-    if (body['userId'] !== userId || typeof body['notifyInApp'] !== 'boolean') {
+    if (body['userId'] !== userId || typeof body['notifyInApp'] !== 'boolean' || typeof body['notifyBrowserPush'] !== 'boolean') {
       throw new Error('Schlussel returned an invalid recipient')
     }
-    return { userId, notifyInApp: body['notifyInApp'] }
+    return { userId, notifyInApp: body['notifyInApp'], notifyBrowserPush: body['notifyBrowserPush'] }
   }
 }

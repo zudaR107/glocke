@@ -6,6 +6,7 @@ import {
 } from '@zudar107/schloss-server-kit'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { sql } from 'drizzle-orm'
+import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createApp } from './app.js'
@@ -13,6 +14,9 @@ import { db, sqlite } from './db/index.js'
 import { users } from './db/schema.js'
 import { createHttpApp } from './http.js'
 import { createProcessor } from './processor.js'
+import { SqlitePushRepository } from './push-repository.js'
+import { createPushWorker } from './push-worker.js'
+import { createWebPushAdapter } from './web-push-adapter.js'
 import { SqliteNotificationRepository } from './repository.js'
 import { createSchlusselRecipientResolver } from './schlussel.js'
 import { loadConfig } from './config.js'
@@ -22,6 +26,7 @@ const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), 'db/migra
 migrate(db, { migrationsFolder })
 
 const repository = new SqliteNotificationRepository(db)
+const pushRepository = new SqlitePushRepository(db)
 const resolveRecipient = createSchlusselRecipientResolver({
   baseUrl: config.schlusselInternalUrl,
   keyId: config.schlusselKeyId,
@@ -47,6 +52,13 @@ const requireExportAuth = createExportAuthMiddleware({
   service: 'glocke',
 })
 
+// Deterministic from the public key itself rather than a separate env var -
+// automatically changes on key rotation, which is exactly when subscriptions
+// tagged with the old id need identifying (see push_subscriptions.vapidKeyId).
+const vapidKeyId = config.push.vapid
+  ? createHash('sha256').update(config.push.vapid.publicKey).digest('hex').slice(0, 12)
+  : null
+
 const service = createApp({
   repository,
   sourceCredentials: config.producers,
@@ -63,6 +75,15 @@ const service = createApp({
       return false
     }
   },
+  pushRepository,
+  resolveRecipient,
+  pushConfig: {
+    available: config.push.enabled,
+    vapidPublicKey: config.push.vapid?.publicKey ?? null,
+    vapidKeyId,
+    allowedProviderHosts: config.push.allowedProviderHosts,
+    maxSubscriptionsPerUser: config.push.maxSubscriptionsPerUser,
+  },
 })
 
 const app = createHttpApp(service, config.allowedOrigins)
@@ -72,8 +93,10 @@ const processor = createProcessor({
   resolveRecipient,
   sourceOrigins: config.sourceOrigins,
   createId,
+  createPushDeliveryId: createId,
   createLeaseId: createId,
   leaseMs: config.workerLeaseMs,
+  glockeOrigin: config.glockePublicUrl,
 })
 const workerIntervalMs = config.workerIntervalMs
 let workerStopped = false
@@ -100,6 +123,47 @@ const workerTimer = setInterval(runWorker, workerIntervalMs)
 workerTimer.unref()
 runWorker()
 
+const pushWorker = config.push.enabled && config.push.vapid
+  ? createPushWorker({
+    repository: pushRepository,
+    resolveRecipient,
+    adapter: createWebPushAdapter(),
+    vapid: config.push.vapid,
+    createLeaseId: createId,
+    leaseMs: config.push.workerLeaseMs,
+    fetchTimeoutMs: config.push.fetchTimeoutMs,
+    maxAttempts: config.push.maxAttempts,
+    baseDelayMs: config.push.baseDelayMs,
+    maxDelayMs: config.push.maxDelayMs,
+    intervalMs: config.push.workerIntervalMs,
+  })
+  : null
+pushWorker?.start()
+
+// Periodic safety net for accounts deleted directly in Schlussel without
+// going through a Glocke-observed flow - re-checks every currently
+// subscribed user against the same recipient resolver the worker itself
+// uses, rather than requiring a bulk "list every user" endpoint that
+// doesn't otherwise exist.
+let reconciliationTimer: ReturnType<typeof setInterval> | null = null
+if (pushWorker) {
+  const runReconciliation = async () => {
+    try {
+      const subscriptions = await pushRepository.listAllSubscriptions()
+      const userIds = [...new Set(subscriptions.map((subscription) => subscription.userId))]
+      const existing = new Set<string>()
+      for (const userId of userIds) {
+        if (await resolveRecipient(userId)) existing.add(userId)
+      }
+      await pushWorker.reconcile(existing)
+    } catch (error) {
+      console.error('[Glocke push worker] Reconciliation failed', error)
+    }
+  }
+  reconciliationTimer = setInterval(() => void runReconciliation(), 60 * 60_000)
+  reconciliationTimer.unref()
+}
+
 const port = config.port
 const server = serve({ fetch: app.fetch, port }, () => {
   console.log(`[Glocke API] Running on http://localhost:${port}`)
@@ -109,10 +173,12 @@ function shutdown(signal: string) {
   if (workerStopped) return
   workerStopped = true
   clearInterval(workerTimer)
+  if (reconciliationTimer) clearInterval(reconciliationTimer)
   console.log(`[Glocke API] ${signal}; stopping`)
   server.close(() => {
     void (async () => {
       await workerPromise
+      await pushWorker?.stop()
       sqlite.close()
       process.exit(0)
     })()

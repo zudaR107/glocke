@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { ExternalLink, SlidersHorizontal } from 'lucide-react'
+import { Bell, ExternalLink, SlidersHorizontal } from 'lucide-react'
 import { Button, DirectExportAction, downloadJson } from '@zudar107/schloss-ui'
 import { buildSchluesselAccountUrl } from '../../lib/authRedirect'
 import { api } from '../../lib/api'
+import { BrowserPushSettings } from './BrowserPushSettings'
 
 export function SettingsPage() {
   const [exporting, setExporting] = useState(false)
@@ -31,6 +32,13 @@ export function SettingsPage() {
       <Button variant="primary" onClick={() => { location.href = buildSchluesselAccountUrl('/settings') }}>
         Открыть настройки аккаунта <ExternalLink size={16}/>
       </Button>
+      <div className="info-card">
+        <Bell size={24}/>
+        <div>
+          <h2>Уведомления в браузере на этом устройстве</h2>
+          <BrowserPushSettings />
+        </div>
+      </div>
       <div className="settings-export">
         <DirectExportAction
           title="Экспорт данных"
@@ -42,7 +50,7 @@ export function SettingsPage() {
           error={exportError}
         />
       </div>
-      <div className="roadmap-note"><strong>Не входит в текущую версию:</strong> Browser Push с сервис-воркером и VAPID, а также Telegram-бот с привязкой аккаунта запланированы как последовательные будущие этапы и сейчас не работают.</div>
+      <div className="roadmap-note"><strong>Не входит в текущую версию:</strong> Telegram-бот с привязкой аккаунта запланирован как отдельный будущий этап и сейчас не работает.</div>
     </section>
   )
 }

@@ -28,14 +28,14 @@ describe('Schlussel recipient resolver', () => {
         maxSkewSeconds: 0,
         now: () => 1_786_104_000_000,
       })).toBe(true)
-      return Response.json({ userId: 'user/one', notifyInApp: true })
+      return Response.json({ userId: 'user/one', notifyInApp: true, notifyBrowserPush: false })
     })
     const resolve = createSchlusselRecipientResolver({
       baseUrl: 'http://schlussel.test:4000', keyId: 'glocke-v1', secret: SECRET,
       fetchTimeoutMs: 1_234, fetch: fetchMock, now: () => 1_786_104_000_000,
     })
 
-    await expect(resolve('user/one')).resolves.toEqual({ userId: 'user/one', notifyInApp: true })
+    await expect(resolve('user/one')).resolves.toEqual({ userId: 'user/one', notifyInApp: true, notifyBrowserPush: false })
     expect(timeoutSpy).toHaveBeenCalledWith(1_234)
     timeoutSpy.mockRestore()
   })

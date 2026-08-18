@@ -183,3 +183,96 @@ describe('runtime configuration', () => {
     expect(response.headers.get('Vary')).toContain('Origin')
   })
 })
+
+// CONTRACT: loadConfig's RuntimeConfig gains a `push` field:
+//
+//   push: {
+//     enabled: boolean
+//     vapid: { subject: string; publicKey: string; privateKey: string } | null   // null when disabled
+//     allowedProviderHosts: string[]
+//     maxSubscriptionsPerUser: number
+//     workerLeaseMs: number
+//     fetchTimeoutMs: number
+//   }
+//
+// Env vars, matching Tor's exact list for this feature (.env.example /
+// .env.production.example - Tor's own repo, not this one):
+//   GLOCKE_BROWSER_PUSH_ENABLED (bool, default false)
+//   GLOCKE_VAPID_SUBJECT / GLOCKE_VAPID_PUBLIC_KEY / GLOCKE_VAPID_PRIVATE_KEY (required only when enabled)
+//   GLOCKE_PUSH_ALLOWED_ENDPOINT_HOSTS (comma list, required only when enabled)
+// Everything else (worker lease/timeout/backoff/retention knobs) is
+// Glocke's own optional, defaulted numeric configuration - the same
+// pattern as the existing GLOCKE_WORKER_INTERVAL_MS, not something Tor's
+// env files need to enumerate. There is deliberately no separate VAPID
+// key-id env var - `vapidKeyId` (used to tag push_subscriptions rows, see
+// push-schema.test.ts) is derived deterministically from the public key
+// itself, so a future key rotation is just "the public key changed" with
+// no extra var to keep in sync.
+describe('browser push configuration', () => {
+  function pushEnabledEnv(): NodeJS.ProcessEnv {
+    return {
+      ...validEnv(),
+      GLOCKE_BROWSER_PUSH_ENABLED: 'true',
+      GLOCKE_VAPID_SUBJECT: 'mailto:push@glocke.example.test',
+      GLOCKE_VAPID_PUBLIC_KEY: 'BNbxGYNMhAxq_test_public_key_placeholder_not_a_real_key_material',
+      GLOCKE_VAPID_PRIVATE_KEY: 'test-only-vapid-private-key-must-never-appear-in-any-response',
+      GLOCKE_PUSH_ALLOWED_ENDPOINT_HOSTS: 'fcm.googleapis.com,updates.push.services.mozilla.com,web.push.apple.com,.notify.windows.com',
+    }
+  }
+
+  it('is disabled by default and requires no VAPID configuration', () => {
+    const config = loadConfig(validEnv())
+    expect(config.push).toMatchObject({ enabled: false, vapid: null })
+  })
+
+  it('loads a complete enabled configuration', () => {
+    const config = loadConfig(pushEnabledEnv())
+    expect(config.push).toMatchObject({
+      enabled: true,
+      vapid: {
+        subject: 'mailto:push@glocke.example.test',
+        publicKey: 'BNbxGYNMhAxq_test_public_key_placeholder_not_a_real_key_material',
+        privateKey: 'test-only-vapid-private-key-must-never-appear-in-any-response',
+      },
+    })
+    expect(config.push.allowedProviderHosts).toEqual([
+      'fcm.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com', '.notify.windows.com',
+    ])
+  })
+
+  it.each([
+    'GLOCKE_VAPID_SUBJECT',
+    'GLOCKE_VAPID_PUBLIC_KEY',
+    'GLOCKE_VAPID_PRIVATE_KEY',
+    'GLOCKE_PUSH_ALLOWED_ENDPOINT_HOSTS',
+  ])('fails closed when enabled but %s is missing', (name) => {
+    const env = pushEnabledEnv()
+    delete env[name]
+    expect(() => loadConfig(env)).toThrow()
+  })
+
+  it('rejects an empty allowlist even when otherwise enabled', () => {
+    expect(() => loadConfig({ ...pushEnabledEnv(), GLOCKE_PUSH_ALLOWED_ENDPOINT_HOSTS: '' })).toThrow()
+  })
+
+  it('requires the push fetch timeout to stay strictly below the push worker lease, mirroring the existing recipient-fetch/worker-lease relationship', () => {
+    expect(() => loadConfig({
+      ...pushEnabledEnv(),
+      GLOCKE_PUSH_FETCH_TIMEOUT_MS: '10000',
+      GLOCKE_PUSH_WORKER_LEASE_MS: '10000',
+    })).toThrow(/lease/i)
+  })
+
+  it('defaults the push worker lease comfortably above the default push fetch timeout', () => {
+    const config = loadConfig(pushEnabledEnv())
+    expect(config.push.workerLeaseMs).toBeGreaterThan(config.push.fetchTimeoutMs)
+  })
+
+  it('does not require push env vars at all when the feature flag is left at its default (false)', () => {
+    const env = validEnv()
+    for (const name of ['GLOCKE_VAPID_SUBJECT', 'GLOCKE_VAPID_PUBLIC_KEY', 'GLOCKE_VAPID_PRIVATE_KEY', 'GLOCKE_PUSH_ALLOWED_ENDPOINT_HOSTS']) {
+      expect(name in env).toBe(false)
+    }
+    expect(() => loadConfig(env)).not.toThrow()
+  })
+})

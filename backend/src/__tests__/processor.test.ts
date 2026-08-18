@@ -13,7 +13,7 @@ describe('inbox processing', () => {
   function processor(notifyInApp = true) {
     return createProcessor({
       repository,
-      resolveRecipient: async (userId) => ({ userId, notifyInApp }),
+      resolveRecipient: async (userId) => ({ userId, notifyInApp, notifyBrowserPush: false }),
       now: () => new Date('2026-08-07T10:00:02.000Z'),
       createId: () => 'notification-1',
       createLeaseId: () => 'lease-1',
@@ -73,7 +73,7 @@ describe('inbox processing', () => {
       repository,
       resolveRecipient: async (userId) => {
         current = new Date('2026-08-07T10:00:31.000Z')
-        return { userId, notifyInApp: true }
+        return { userId, notifyInApp: true, notifyBrowserPush: false }
       },
       now: () => current,
       createLeaseId: () => 'lease-1',
@@ -88,9 +88,9 @@ describe('inbox processing', () => {
   it('captures a fresh completion timestamp after notification materialization', async () => {
     repository.seedInbox(inboxRecord())
     let current = new Date('2026-08-07T10:00:00.000Z')
-    const createNotification = repository.createNotification.bind(repository)
-    repository.createNotification = async (...args) => {
-      const result = await createNotification(...args)
+    const materializeNotification = repository.materializeNotification.bind(repository)
+    repository.materializeNotification = async (...args) => {
+      const result = await materializeNotification(...args)
       current = new Date('2026-08-07T10:00:31.000Z')
       return result
     }
@@ -98,7 +98,7 @@ describe('inbox processing', () => {
       repository,
       resolveRecipient: async (userId) => {
         current = new Date('2026-08-07T10:00:10.000Z')
-        return { userId, notifyInApp: true }
+        return { userId, notifyInApp: true, notifyBrowserPush: false }
       },
       now: () => current,
       createId: () => 'notification-1',
@@ -238,7 +238,7 @@ describe('inbox processing', () => {
       repository,
       resolveRecipient: async (userId) => {
         resolved.push(userId)
-        return { userId, notifyInApp: true }
+        return { userId, notifyInApp: true, notifyBrowserPush: false }
       },
       now: () => new Date('2026-08-07T10:00:02.000Z'),
       createId: () => 'notification-valid',
@@ -278,7 +278,7 @@ describe('inbox processing', () => {
     let notificationIndex = 0
     const worker = createProcessor({
       repository,
-      resolveRecipient: async (userId) => ({ userId, notifyInApp: true }),
+      resolveRecipient: async (userId) => ({ userId, notifyInApp: true, notifyBrowserPush: false }),
       sourceOrigins: {
         kuvert: 'https://kuvert.example.test',
         tafel: 'https://tafel.example.test',

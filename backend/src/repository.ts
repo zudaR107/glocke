@@ -1,8 +1,11 @@
 import { and, asc, count, desc, eq, gt, isNull, lt, lte, or } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import type * as schemaType from './db/schema.js'
-import { inboxEvents, notifications } from './db/schema.js'
-import type { EventEnvelope, InboxRecord, NotificationPage, NotificationRecord, NotificationRepository } from './contracts.js'
+import { inboxEvents, notifications, pushDeliveries, pushSubscriptions } from './db/schema.js'
+import type {
+  EventEnvelope, InboxRecord, NotificationPage, NotificationRecord, NotificationRepository,
+  PushDeliveryRecord, PushSubscriptionRecord,
+} from './contracts.js'
 
 type Database = BetterSQLite3Database<typeof schemaType>
 
@@ -48,6 +51,16 @@ function notificationRecord(row: typeof notifications.$inferSelect): Notificatio
     ...row,
     createdAt: row.createdAt.toISOString(),
     readAt: row.readAt?.toISOString() ?? null,
+  }
+}
+
+function pushSubscriptionRecord(row: typeof pushSubscriptions.$inferSelect): PushSubscriptionRecord {
+  return {
+    ...row,
+    expirationTime: row.expirationTime?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    lastSuccessAt: row.lastSuccessAt?.toISOString() ?? null,
   }
 }
 
@@ -170,5 +183,50 @@ export class SqliteNotificationRepository implements NotificationRepository {
     return this.database.delete(notifications).where(and(
       eq(notifications.id, notificationId), eq(notifications.userId, userId),
     )).run().changes === 1
+  }
+
+  async listActiveSubscriptions(userId: string): Promise<PushSubscriptionRecord[]> {
+    return this.database.select().from(pushSubscriptions)
+      .where(eq(pushSubscriptions.userId, userId))
+      .all()
+      .map(pushSubscriptionRecord)
+  }
+
+  async materializeNotification(input: {
+    source: string
+    eventId: string
+    leaseId: string
+    now: string
+    notification: NotificationRecord | null
+    pushDeliveries: PushDeliveryRecord[]
+  }): Promise<'materialized' | 'stale'> {
+    return this.database.transaction(() => {
+      const claim = this.database.select({ leaseId: inboxEvents.leaseId }).from(inboxEvents).where(and(
+        eq(inboxEvents.source, input.source), eq(inboxEvents.eventId, input.eventId),
+        eq(inboxEvents.status, 'processing'), eq(inboxEvents.leaseId, input.leaseId),
+        gt(inboxEvents.leaseUntil, new Date(input.now)),
+      )).get()
+      if (!claim) return 'stale' as const
+
+      if (input.notification) {
+        const record = input.notification
+        this.database.insert(notifications).values({
+          ...record,
+          createdAt: new Date(record.createdAt),
+          readAt: record.readAt ? new Date(record.readAt) : null,
+        }).onConflictDoNothing().run()
+      }
+
+      for (const delivery of input.pushDeliveries) {
+        this.database.insert(pushDeliveries).values({
+          ...delivery,
+          nextAttemptAt: delivery.nextAttemptAt ? new Date(delivery.nextAttemptAt) : null,
+          leaseUntil: delivery.leaseUntil ? new Date(delivery.leaseUntil) : null,
+          deliveredAt: delivery.deliveredAt ? new Date(delivery.deliveredAt) : null,
+        }).onConflictDoNothing().run()
+      }
+
+      return 'materialized' as const
+    })
   }
 }

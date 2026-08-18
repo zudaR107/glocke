@@ -8,8 +8,18 @@ import {
 } from '@zudar107/schloss-server-kit'
 import { Hono, type MiddlewareHandler } from 'hono'
 import { z } from 'zod'
-import type { Authenticate, EventEnvelope, NotificationRepository } from './contracts.js'
+import type { Authenticate, EventEnvelope, NotificationRepository, ResolveRecipient } from './contracts.js'
 import { eventRegistryByType } from './event-registry.js'
+import type { PushRepository } from './push-repository.js'
+import { validatePushSubscriptionInput } from './push-validation.js'
+
+export interface PushApiConfig {
+  available: boolean
+  vapidPublicKey: string | null
+  vapidKeyId: string | null
+  allowedProviderHosts: readonly string[]
+  maxSubscriptionsPerUser: number
+}
 
 const strictNotificationEventEnvelopeSchema = notificationEventEnvelopeSchema.strict()
 
@@ -31,6 +41,10 @@ export interface CreateAppOptions {
   maxEventBytes?: number
   now?: () => Date
   ready?: () => Promise<boolean>
+  pushRepository?: PushRepository
+  resolveRecipient?: ResolveRecipient
+  pushConfig?: PushApiConfig
+  createPushSubscriptionId?: () => string
 }
 
 function credentials(options: CreateAppOptions): Readonly<Record<string, ProducerCredential>> {
@@ -166,6 +180,13 @@ export function createApp(options: CreateAppOptions): Hono<ExportAuthEnv> {
     return context.json({ status: 'accepted' }, 202)
   })
 
+  const pushPrivateResponse: MiddlewareHandler = async (context, next) => {
+    context.header('Cache-Control', 'private, no-store, no-cache')
+    context.header('X-Content-Type-Options', 'nosniff')
+    await next()
+  }
+  app.use('/notifications/push/*', pushPrivateResponse)
+
   app.use('/notifications', requireAuth)
   app.use('/notifications/*', requireAuth)
 
@@ -195,6 +216,79 @@ export function createApp(options: CreateAppOptions): Hono<ExportAuthEnv> {
   app.delete('/notifications/:id', async (context) => {
     const deleted = await options.repository.deleteNotification(context.get('user').id, context.req.param('id'))
     return deleted ? context.body(null, 204) : context.json({ error: 'Not found' }, 404)
+  })
+
+  const createPushSubscriptionId = options.createPushSubscriptionId ?? (() => crypto.randomUUID())
+
+  app.get('/notifications/push/status', async (context) => {
+    const userId = context.get('user').id
+    const pushConfig = options.pushConfig
+    const recipient = await options.resolveRecipient?.(userId)
+    const subscriptions = await options.pushRepository?.listSubscriptions(userId) ?? []
+    return context.json({
+      available: pushConfig?.available ?? false,
+      notifyBrowserPush: recipient?.notifyBrowserPush ?? false,
+      vapidPublicKey: pushConfig?.vapidPublicKey ?? null,
+      vapidKeyId: pushConfig?.vapidKeyId ?? null,
+      subscriptions: subscriptions.map((subscription) => ({
+        id: subscription.id,
+        providerHost: subscription.providerHost,
+        createdAt: subscription.createdAt,
+        lastSuccessAt: subscription.lastSuccessAt,
+      })),
+    })
+  })
+
+  app.put('/notifications/push/subscriptions', async (context) => {
+    const pushConfig = options.pushConfig
+    if (!options.pushRepository || !pushConfig) return context.json({ error: 'Browser push is not available' }, 503)
+
+    let rawBody: unknown
+    try {
+      rawBody = await context.req.json()
+    } catch {
+      return context.json({ error: 'Invalid JSON' }, 400)
+    }
+    // Owner is always the verified JWT subject - strip any owner/identity
+    // shaped field the caller might have included before strict-validating
+    // the rest of the body, rather than rejecting the whole request for it.
+    const candidate = rawBody && typeof rawBody === 'object' && !Array.isArray(rawBody)
+      ? Object.fromEntries(Object.entries(rawBody).filter(([key]) => key !== 'userId' && key !== 'id'))
+      : rawBody
+    const validated = validatePushSubscriptionInput(candidate, pushConfig.allowedProviderHosts)
+    if (!validated.valid) return context.json({ error: `Invalid push subscription: ${validated.reason}` }, 400)
+
+    const userId = context.get('user').id
+    const at = now().toISOString()
+    const result = await options.pushRepository.putSubscription({
+      id: createPushSubscriptionId(),
+      userId,
+      endpoint: validated.endpoint,
+      endpointHash: createHash('sha256').update(validated.endpoint).digest('hex'),
+      p256dh: validated.p256dh,
+      auth: validated.auth,
+      expirationTime: validated.expirationTime ? new Date(validated.expirationTime).toISOString() : null,
+      providerHost: validated.providerHost,
+      vapidKeyId: pushConfig.vapidKeyId ?? '',
+      createdAt: at,
+      updatedAt: at,
+      lastSuccessAt: null,
+    }, pushConfig.maxSubscriptionsPerUser)
+
+    if (result === 'conflict' || result === 'limit-exceeded') {
+      return context.json({ error: result === 'conflict' ? 'Endpoint already registered to another account' : 'Subscription limit exceeded' }, 409)
+    }
+    return context.json({ status: result })
+  })
+
+  app.delete('/notifications/push/subscriptions/:id', async (context) => {
+    if (!options.pushRepository) return context.json({ error: 'Browser push is not available' }, 503)
+    const userId = context.get('user').id
+    const id = context.req.param('id')
+    const subscription = await options.pushRepository.findSubscriptionById(id)
+    if (subscription && subscription.userId !== userId) return context.json({ error: 'Not found' }, 404)
+    if (subscription) await options.pushRepository.deleteSubscription(userId, id)
+    return context.body(null, 204)
   })
 
   app.get('/exports/me', async (context, next) => {

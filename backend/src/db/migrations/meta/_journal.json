@@ -15,6 +15,13 @@
       "when": 1786957618418,
       "tag": "0001_sanitize_pre_registry_action_urls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787034814269,
+      "tag": "0002_deep_morgan_stark",
+      "breakpoints": true
     }
   ]
 }
