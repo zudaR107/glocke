@@ -22,11 +22,13 @@
     "better-sqlite3": "^12.11.1",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.32",
+    "web-push": "^3.6.7",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^26.1.0",
+    "@types/web-push": "^3.6.4",
     "@vitest/coverage-v8": "^4.1.10",
     "drizzle-kit": "^0.31.10",
     "oxlint": "^1.73.0",

@@ -48,6 +48,40 @@ export interface NotificationPage {
   nextCursor: string | null
 }
 
+export type PushDeliveryState = 'pending' | 'processing' | 'delivered' | 'suppressed' | 'permanent'
+
+export interface PushSubscriptionRecord {
+  id: string
+  userId: string
+  endpoint: string
+  endpointHash: string
+  p256dh: string
+  auth: string
+  expirationTime: string | null
+  providerHost: string
+  vapidKeyId: string
+  createdAt: string
+  updatedAt: string
+  lastSuccessAt: string | null
+}
+
+export interface PushDeliveryRecord {
+  id: string
+  eventId: string
+  source: string
+  userId: string
+  subscriptionId: string
+  destinationUrl: string
+  state: PushDeliveryState
+  attempts: number
+  nextAttemptAt: string | null
+  leaseId: string | null
+  leaseUntil: string | null
+  deliveredAt: string | null
+  lastStatus: number | null
+  lastError: string | null
+}
+
 export interface NotificationRepository {
   acceptInbox(record: InboxRecord): Promise<'accepted' | 'duplicate' | 'conflict'>
   claimPendingInbox(now: string, leaseUntil: string, leaseId: string): Promise<InboxRecord | null>
@@ -59,11 +93,21 @@ export interface NotificationRepository {
   markRead(userId: string, notificationId: string, readAt: string): Promise<NotificationRecord | null>
   markAllRead(userId: string, readAt: string): Promise<number>
   deleteNotification(userId: string, notificationId: string): Promise<boolean>
+  listActiveSubscriptions(userId: string): Promise<PushSubscriptionRecord[]>
+  materializeNotification(input: {
+    source: string
+    eventId: string
+    leaseId: string
+    now: string
+    notification: NotificationRecord | null
+    pushDeliveries: PushDeliveryRecord[]
+  }): Promise<'materialized' | 'stale'>
 }
 
 export interface Recipient {
   userId: string
   notifyInApp: boolean
+  notifyBrowserPush: boolean
 }
 
 export type ResolveRecipient = (userId: string) => Promise<Recipient | null>

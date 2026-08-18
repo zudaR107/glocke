@@ -4,10 +4,36 @@ import type {
   NotificationRecord,
   NotificationRepository,
 } from '../../contracts.js'
+import type { PushDeliveryRecord, PushSubscriptionRecord } from './push-fixtures.js'
 
+// CONTRACT (extends NotificationRepository, see contracts.ts): once
+// browser push lands, NotificationRepository must additionally expose
+//
+//   listActiveSubscriptions(userId: string): Promise<PushSubscriptionRecord[]>
+//   materializeNotification(input: {
+//     source: string
+//     eventId: string
+//     leaseId: string
+//     now: string
+//     notification: NotificationRecord | null   // null when notifyInApp is false
+//     pushDeliveries: PushDeliveryRecord[]       // [] when notifyBrowserPush is false
+//   }): Promise<'materialized' | 'stale'>
+//
+// `materializeNotification` replaces the old bare `createNotification`
+// call in processor.ts: it re-checks the SAME inbox lease exactly once
+// (like createNotification's own claim check today), then inserts the
+// notification row (if not null) and every push delivery row inside the
+// same fenced write, each insert independently idempotent (deduplicated
+// by the notification's existing (source,eventId,userId) uniqueness and
+// the new push_deliveries (eventId,source,subscriptionId) uniqueness) so
+// a crash-and-retry of the SAME claim can never double-materialize either
+// side. See push-materialization.test.ts for the full behavioral
+// contract this method must satisfy.
 export class MemoryNotificationRepository implements NotificationRepository {
   readonly inbox: InboxRecord[] = []
   readonly notifications: NotificationRecord[] = []
+  readonly pushSubscriptions: PushSubscriptionRecord[] = []
+  readonly pushDeliveries: PushDeliveryRecord[] = []
   failNextCompletion = false
 
   async acceptInbox(record: InboxRecord): Promise<'accepted' | 'duplicate' | 'conflict'> {
@@ -110,6 +136,44 @@ export class MemoryNotificationRepository implements NotificationRepository {
     if (index < 0) return false
     this.notifications.splice(index, 1)
     return true
+  }
+
+  async listActiveSubscriptions(userId: string): Promise<PushSubscriptionRecord[]> {
+    return structuredClone(this.pushSubscriptions.filter((subscription) => subscription.userId === userId))
+  }
+
+  async materializeNotification(input: {
+    source: string
+    eventId: string
+    leaseId: string
+    now: string
+    notification: NotificationRecord | null
+    pushDeliveries: PushDeliveryRecord[]
+  }): Promise<'materialized' | 'stale'> {
+    const claim = this.inbox.find((candidate) => (
+      candidate.source === input.source && candidate.eventId === input.eventId &&
+      candidate.status === 'processing' && candidate.leaseId === input.leaseId &&
+      candidate.leaseUntil !== null && candidate.leaseUntil > input.now
+    ))
+    if (!claim) return 'stale'
+    if (input.notification) {
+      const notification = input.notification
+      const existing = this.notifications.find((candidate) => (
+        candidate.source === notification.source && candidate.eventId === notification.eventId && candidate.userId === notification.userId
+      ))
+      if (!existing) this.notifications.push(structuredClone(notification))
+    }
+    for (const delivery of input.pushDeliveries) {
+      const existing = this.pushDeliveries.find((candidate) => (
+        candidate.eventId === delivery.eventId && candidate.source === delivery.source && candidate.subscriptionId === delivery.subscriptionId
+      ))
+      if (!existing) this.pushDeliveries.push(structuredClone(delivery))
+    }
+    return 'materialized'
+  }
+
+  seedPushSubscription(record: PushSubscriptionRecord): void {
+    this.pushSubscriptions.push(structuredClone(record))
   }
 
   recoverProcessing(): void {

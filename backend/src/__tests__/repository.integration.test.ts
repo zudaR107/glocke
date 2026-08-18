@@ -94,7 +94,7 @@ describe('SqliteNotificationRepository', () => {
     }))
     const processor = createProcessor({
       repository,
-      resolveRecipient: async (userId) => ({ userId, notifyInApp: true }),
+      resolveRecipient: async (userId) => ({ userId, notifyInApp: true, notifyBrowserPush: false }),
       now: () => new Date('2026-08-07T10:00:02.000Z'),
       createId: () => 'notification-valid',
       createLeaseId: randomUUID,

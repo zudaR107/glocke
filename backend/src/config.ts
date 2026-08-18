@@ -17,11 +17,26 @@ export interface RuntimeConfig {
   workerIntervalMs: number
   workerLeaseMs: number
   recipientFetchTimeoutMs: number
+  glockePublicUrl: string
+  push: PushConfig
 }
 
 export interface SourceOrigins {
   kuvert: string
   tafel: string
+}
+
+export interface PushConfig {
+  enabled: boolean
+  vapid: { subject: string; publicKey: string; privateKey: string } | null
+  allowedProviderHosts: string[]
+  fetchTimeoutMs: number
+  workerLeaseMs: number
+  workerIntervalMs: number
+  maxAttempts: number
+  baseDelayMs: number
+  maxDelayMs: number
+  maxSubscriptionsPerUser: number
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -79,6 +94,49 @@ function secret(value: string, name: string): string {
   return value
 }
 
+function boolean(env: NodeJS.ProcessEnv, name: string, fallback: boolean): boolean {
+  const raw = env[name]?.trim()
+  if (!raw) return fallback
+  if (raw === 'true') return true
+  if (raw === 'false') return false
+  throw new Error(`${name} must be "true" or "false"`)
+}
+
+function vapidSubject(value: string, name: string): string {
+  if (value.startsWith('mailto:') && value.length > 'mailto:'.length) return value
+  try {
+    if (new URL(value).protocol === 'https:') return value
+  } catch { /* fall through to the error below */ }
+  throw new Error(`${name} must be a mailto: address or an HTTPS URL`)
+}
+
+function loadPushConfig(env: NodeJS.ProcessEnv): PushConfig {
+  const enabled = boolean(env, 'GLOCKE_BROWSER_PUSH_ENABLED', false)
+  const fetchTimeoutMs = integer(env, 'GLOCKE_PUSH_FETCH_TIMEOUT_MS', 10_000, 1, 3_590_000)
+  const workerLeaseMs = integer(env, 'GLOCKE_PUSH_WORKER_LEASE_MS', 30_000, 1, 3_600_000)
+  if (workerLeaseMs <= fetchTimeoutMs) {
+    throw new Error('GLOCKE_PUSH_WORKER_LEASE_MS must be strictly greater than GLOCKE_PUSH_FETCH_TIMEOUT_MS (the delivery lease)')
+  }
+  const shared = {
+    fetchTimeoutMs,
+    workerLeaseMs,
+    workerIntervalMs: integer(env, 'GLOCKE_PUSH_WORKER_INTERVAL_MS', 1_000, 10, 3_600_000),
+    maxAttempts: integer(env, 'GLOCKE_PUSH_MAX_ATTEMPTS', 8, 1, 100),
+    baseDelayMs: integer(env, 'GLOCKE_PUSH_RETRY_BASE_DELAY_MS', 1_000, 1, 3_600_000),
+    maxDelayMs: integer(env, 'GLOCKE_PUSH_RETRY_MAX_DELAY_MS', 6 * 60 * 60_000, 1_000, 24 * 60 * 60_000),
+    maxSubscriptionsPerUser: integer(env, 'GLOCKE_PUSH_MAX_SUBSCRIPTIONS_PER_USER', 10, 1, 100),
+  }
+  if (!enabled) return { enabled: false, vapid: null, allowedProviderHosts: [], ...shared }
+
+  const subject = vapidSubject(required(env, 'GLOCKE_VAPID_SUBJECT'), 'GLOCKE_VAPID_SUBJECT')
+  const publicKey = required(env, 'GLOCKE_VAPID_PUBLIC_KEY')
+  const privateKey = required(env, 'GLOCKE_VAPID_PRIVATE_KEY')
+  const allowedProviderHosts = required(env, 'GLOCKE_PUSH_ALLOWED_ENDPOINT_HOSTS').split(',').map((value) => value.trim()).filter(Boolean)
+  if (allowedProviderHosts.length === 0) throw new Error('GLOCKE_PUSH_ALLOWED_ENDPOINT_HOSTS must list at least one provider host')
+
+  return { enabled: true, vapid: { subject, publicKey, privateKey }, allowedProviderHosts, ...shared }
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   const sources = required(env, 'GLOCKE_EVENT_SOURCES').split(',').map((value) => value.trim())
   if (sources.some((source) => !/^[a-z][a-z0-9-]{0,63}$/.test(source)) || new Set(sources).size !== sources.length) {
@@ -128,5 +186,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     workerIntervalMs: integer(env, 'GLOCKE_WORKER_INTERVAL_MS', 1_000, 10, 3_600_000),
     workerLeaseMs,
     recipientFetchTimeoutMs,
+    // Glocke's own public origin - only needed to turn a relative in-app
+    // actionUrl (e.g. Schlüssel's '/settings') into an absolute push
+    // destination URL a service worker can open from outside page context.
+    // Falls back to a harmless local-dev default rather than being
+    // required, since only Browser Push actually depends on it.
+    glockePublicUrl: origin(env['GLOCKE_PUBLIC_URL']?.trim() || 'http://localhost:5177', 'GLOCKE_PUBLIC_URL'),
+    push: loadPushConfig(env),
   }
 }

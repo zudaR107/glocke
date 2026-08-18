@@ -209,6 +209,14 @@ The Settings page downloads the current user's Glocke snapshot directly as
 | `GLOCKE_MAX_SKEW_SECONDS` / `GLOCKE_MAX_EVENT_BYTES` | Signature timestamp tolerance and signed request-body limit |
 | `GLOCKE_WORKER_INTERVAL_MS` / `GLOCKE_WORKER_LEASE_MS` | Inbox polling interval and claim lease |
 | `GLOCKE_RECIPIENT_FETCH_TIMEOUT_MS` | Timeout for each current-recipient lookup |
+| `GLOCKE_PUBLIC_URL` | Glocke's own public origin; resolves a relative in-app `actionUrl` into an absolute push destination. Defaults to a local-dev origin |
+| `GLOCKE_BROWSER_PUSH_ENABLED` | Feature flag; `false` by default and requires no VAPID configuration when off |
+| `GLOCKE_VAPID_SUBJECT` / `GLOCKE_VAPID_PUBLIC_KEY` / `GLOCKE_VAPID_PRIVATE_KEY` | Required only when the flag is on; generate once with `npx web-push generate-vapid-keys` and keep stable — rotating requires every browser to re-subscribe |
+| `GLOCKE_PUSH_ALLOWED_ENDPOINT_HOSTS` | Comma-separated provider-host allowlist; an entry starting with `.` matches as a hostname suffix (covers Microsoft WNS's per-region hosts). Required and non-empty when the flag is on |
+| `GLOCKE_PUSH_FETCH_TIMEOUT_MS` / `GLOCKE_PUSH_WORKER_LEASE_MS` | Push send timeout and claim lease; the lease must be strictly greater than the timeout. Defaults 10s / 30s |
+| `GLOCKE_PUSH_WORKER_INTERVAL_MS` | Push worker polling interval; default 1s |
+| `GLOCKE_PUSH_MAX_ATTEMPTS` / `GLOCKE_PUSH_RETRY_BASE_DELAY_MS` / `GLOCKE_PUSH_RETRY_MAX_DELAY_MS` | Retry attempt cap and full-jitter backoff bounds; defaults 8 / 1s / 6h |
+| `GLOCKE_PUSH_MAX_SUBSCRIPTIONS_PER_USER` | Active browser cap per account; default 10 |
 
 Every producer secret must be unique and must also differ from `GLOCKE_TO_SCHLUSSEL_HMAC_SECRET`. `GLOCKE_RECIPIENT_FETCH_TIMEOUT_MS` bounds each preference lookup; `GLOCKE_WORKER_LEASE_MS` must provide at least 10 seconds beyond that timeout for rendering and SQLite contention. Defaults are 5 seconds and 30 seconds respectively.
 
@@ -288,13 +296,48 @@ git diff --check
 The foundation materializes in-app notifications, with the producer outbox
 and signed event contract now rolled out to every registered Hof service
 (Schlüssel, Kuvert, Tafel, Zettel). The shared Hof `Header` now includes a
-Glocke bell with auth-safe unread state. Follow-up work is ordered as follows:
+Glocke bell with auth-safe unread state. Browser Push is now implemented:
+Glocke owns VAPID keys, browser subscriptions, a leased retry worker, and a
+push-only service worker; Schlüssel owns only the global on/off switch.
+Follow-up work is ordered as follows:
 
-1. Add Browser Push through a Glocke-owned service worker and VAPID configuration.
-2. Add the Telegram bot and secure account-linking flow.
+1. Add the Telegram bot and secure account-linking flow.
 
-Browser Push/service worker/VAPID and Telegram bot/linking remain explicitly
-deferred and are not implemented.
+Telegram bot/linking remains explicitly deferred and is not implemented.
+iOS/PWA installation is a separate future phase from this first Browser Push
+rollout, which supports desktop and Android.
+
+### Browser Push
+
+Materialization gates each channel independently: an in-app `notifications`
+row is created only when `notifyInApp` is true, and one `push_deliveries` row
+per currently-active subscription is created only when `notifyBrowserPush` is
+true, both inside the same fenced write as the existing inbox claim. A push
+subscription registered after an event was already processed never
+retroactively receives a delivery for that past event. The wire payload sent
+to the browser (`{ id, text, url }`) is always generic - the real per-event
+Russian title/body from the event registry is for the in-app row and the
+trusted destination page only, never the push notification body itself.
+
+The retry worker (`backend/src/push-worker.ts`) wraps `web-push` behind a
+network-free adapter, re-checks the recipient's global preference at send
+time (not just at enqueue time), deletes a subscription and settles its
+related deliveries on 404/410, retries other retryable outcomes with
+full-jitter backoff capped by `GLOCKE_PUSH_RETRY_MAX_DELAY_MS`, and honors
+(but caps) `Retry-After`. A periodic reconciliation sweep removes
+subscriptions for accounts Schlüssel no longer recognizes.
+
+`GET/PUT/DELETE /notifications/push/*` enforce owner isolation, a
+provider-host allowlist with SSRF/private-range rejection, and a per-user
+subscription cap; responses never include a raw endpoint, encryption keys,
+or the VAPID private key. The service worker (`frontend/public/sw.js`) has
+no fetch handler and never receives a JWT; a push shows only neutral text
+and a trusted destination URL, and a click focuses an existing Glocke tab
+before opening a new one.
+
+Disabled by default (`GLOCKE_BROWSER_PUSH_ENABLED=false`) and requires no
+VAPID configuration until enabled - see the environment variable table
+below.
 
 ## License
 

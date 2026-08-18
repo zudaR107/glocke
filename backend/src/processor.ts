@@ -1,5 +1,7 @@
 import { notificationEventEnvelopeSchema } from '@zudar107/schloss-server-kit'
-import type { EventEnvelope, EventPayload, NotificationRecord, NotificationRepository, ResolveRecipient } from './contracts.js'
+import type {
+  EventEnvelope, EventPayload, NotificationRecord, NotificationRepository, PushDeliveryRecord, ResolveRecipient,
+} from './contracts.js'
 import type { SourceOrigins } from './config.js'
 import { eventRegistryByType } from './event-registry.js'
 
@@ -12,14 +14,17 @@ export interface CreateProcessorOptions {
   resolveRecipient: ResolveRecipient
   now?: () => Date
   createId?: () => string
+  createPushDeliveryId?: () => string
   createLeaseId?: () => string
   leaseMs?: number
   sourceOrigins?: Readonly<SourceOrigins>
+  glockeOrigin?: string
 }
 
 export function createProcessor(options: CreateProcessorOptions): Processor {
   const now = options.now ?? (() => new Date())
   const createId = options.createId ?? (() => crypto.randomUUID())
+  const createPushDeliveryId = options.createPushDeliveryId ?? (() => crypto.randomUUID())
   const createLeaseId = options.createLeaseId ?? (() => crypto.randomUUID())
   const leaseMs = options.leaseMs ?? 30_000
 
@@ -43,10 +48,10 @@ export function createProcessor(options: CreateProcessorOptions): Processor {
       }
 
       const recipient = await options.resolveRecipient(event.userId)
-      if (recipient?.notifyInApp) {
+      if (recipient?.notifyInApp || recipient?.notifyBrowserPush) {
         const materializedAt = now().toISOString()
         const payload = renderNotification(envelope, options.sourceOrigins)
-        const result = await options.repository.createNotification({
+        const notification: NotificationRecord | null = recipient.notifyInApp ? {
           id: createId(),
           eventId: event.eventId,
           userId: event.userId,
@@ -55,7 +60,38 @@ export function createProcessor(options: CreateProcessorOptions): Processor {
           ...payload,
           createdAt: envelope.occurredAt,
           readAt: null,
-        }, leaseId, materializedAt)
+        } : null
+
+        let pushDeliveries: PushDeliveryRecord[] = []
+        if (recipient.notifyBrowserPush) {
+          const destinationUrl = resolveDestinationUrl(payload.actionUrl, options.glockeOrigin)
+          const subscriptions = await options.repository.listActiveSubscriptions(event.userId)
+          pushDeliveries = subscriptions.map((subscription) => ({
+            id: createPushDeliveryId(),
+            eventId: event.eventId,
+            source: event.source,
+            userId: event.userId,
+            subscriptionId: subscription.id,
+            destinationUrl,
+            state: 'pending' as const,
+            attempts: 0,
+            nextAttemptAt: null,
+            leaseId: null,
+            leaseUntil: null,
+            deliveredAt: null,
+            lastStatus: null,
+            lastError: null,
+          }))
+        }
+
+        const result = await options.repository.materializeNotification({
+          source: event.source,
+          eventId: event.eventId,
+          leaseId,
+          now: materializedAt,
+          notification,
+          pushDeliveries,
+        })
         if (result === 'stale') return 'idle'
       }
       const processedAt = now().toISOString()
@@ -63,6 +99,16 @@ export function createProcessor(options: CreateProcessorOptions): Processor {
         event.source, event.eventId, leaseId, processedAt,
       ) ? 'processed' : 'idle'
     },
+  }
+}
+
+function resolveDestinationUrl(actionUrl: string | null, glockeOrigin: string | undefined): string {
+  const origin = glockeOrigin ?? 'http://localhost'
+  if (!actionUrl) return `${origin}/notifications`
+  try {
+    return new URL(actionUrl).toString()
+  } catch {
+    return new URL(actionUrl, origin).toString()
   }
 }
 
