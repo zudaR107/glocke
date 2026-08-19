@@ -121,6 +121,44 @@ describe('NotificationCenter', () => {
     expect(invalidateNotificationUnreadCount).toHaveBeenCalledOnce()
   })
 
+  it('marks a notification read by clicking anywhere on its card, not just the explicit button', async () => {
+    const user = userEvent.setup()
+    vi.mocked(listNotifications).mockResolvedValue({ items: [unreadNotification], nextCursor: null })
+    vi.mocked(getUnreadCount).mockResolvedValue(1)
+    vi.mocked(markNotificationRead).mockResolvedValue({ ...unreadNotification, readAt: '2026-08-07T10:05:00.000Z' })
+
+    render(<NotificationCenter />)
+    await user.click(await screen.findByRole('heading', { name: 'Release is due' }))
+
+    expect(markNotificationRead).toHaveBeenCalledWith('notification-1')
+  })
+
+  it('does not mark read again when clicking an already-read card', async () => {
+    const user = userEvent.setup()
+    const readNotification = { ...unreadNotification, readAt: '2026-08-07T10:05:00.000Z' }
+    vi.mocked(listNotifications).mockResolvedValue({ items: [readNotification], nextCursor: null })
+    vi.mocked(getUnreadCount).mockResolvedValue(0)
+
+    render(<NotificationCenter />)
+    await user.click(await screen.findByRole('heading', { name: 'Release is due' }))
+
+    expect(markNotificationRead).not.toHaveBeenCalled()
+  })
+
+  it('does not double-fire mark-read when clicking the actions row (delete, open, or the explicit button)', async () => {
+    const user = userEvent.setup()
+    const mutation = deferred<void>()
+    vi.mocked(listNotifications).mockResolvedValue({ items: [unreadNotification], nextCursor: null })
+    vi.mocked(getUnreadCount).mockResolvedValue(1)
+    vi.mocked(deleteNotification).mockReturnValue(mutation.promise)
+
+    render(<NotificationCenter />)
+    await user.click(await screen.findByRole('button', { name: 'Удалить «Release is due»' }))
+
+    expect(markNotificationRead).not.toHaveBeenCalled()
+    expect(deleteNotification).toHaveBeenCalledWith('notification-1')
+  })
+
   it('marks all notifications read', async () => {
     const user = userEvent.setup()
     const mutation = deferred<number>()

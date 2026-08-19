@@ -143,6 +143,17 @@ export function NotificationCenter() {
               key={notification.id}
               aria-label={notification.title}
               className={`notification-card ${notification.readAt ? '' : 'is-unread'}`}
+              // Clicking anywhere on an unread card's body marks it read -
+              // a mouse/touch convenience on top of (not instead of) the
+              // explicit, fully keyboard-accessible button below, which
+              // stays the real affordance for keyboard/screen-reader use.
+              // Guarded to the actions row so it never double-fires with
+              // Открыть/Отметить/Удалить's own clicks.
+              onClick={(event) => {
+                if ((event.target as HTMLElement).closest('.notification-actions')) return
+                if (!notification.readAt) void markRead(notification)
+              }}
+              style={{ cursor: notification.readAt ? undefined : 'pointer' }}
             >
               <div className="notification-rail" aria-hidden="true" />
               <div className="notification-content">
