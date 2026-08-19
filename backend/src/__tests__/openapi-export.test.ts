@@ -53,19 +53,22 @@ describe('export OpenAPI contract', () => {
     expect(notifications.items.properties).not.toHaveProperty('payloadHash')
   })
 
-  it('publishes only the four source-bound event contracts without producer presentation fields', () => {
+  it('publishes only the seven source-bound event contracts without producer presentation fields', () => {
     const operation = openApiDocument.paths?.['/internal/v1/events']?.post as any
     const schema = operation.requestBody.content['application/json'].schema
     const variants = schema.oneOf ?? schema.anyOf
 
-    expect(variants).toHaveLength(4)
+    expect(variants).toHaveLength(7)
     const contracts = Object.fromEntries(variants.map((variant: any) => [
       variant.properties.type.enum[0],
       variant,
     ]))
     expect(Object.keys(contracts).sort()).toEqual([
+      'kuvert.debt.paid_off.v1',
+      'kuvert.envelope.overdrawn.v1',
       'kuvert.goal.completed.v1',
       'schlussel.security.password_changed.v1',
+      'tafel.project.completed.v1',
       'tafel.task.due.v1',
       'zettel.note.backlink_added.v1',
     ])
@@ -73,7 +76,10 @@ describe('export OpenAPI contract', () => {
     const expected = {
       'schlussel.security.password_changed.v1': ['recipientId'],
       'kuvert.goal.completed.v1': ['recipientId', 'goalName'],
+      'kuvert.debt.paid_off.v1': ['recipientId', 'counterparty'],
+      'kuvert.envelope.overdrawn.v1': ['recipientId', 'envelopeName'],
       'tafel.task.due.v1': ['recipientId', 'taskTitle', 'dueDate', 'overdue'],
+      'tafel.project.completed.v1': ['recipientId', 'projectName'],
       'zettel.note.backlink_added.v1': ['recipientId', 'sourceTitle', 'targetTitle'],
     }
     for (const [type, fields] of Object.entries(expected)) {
