@@ -60,7 +60,13 @@ export function validatePushSubscriptionInput(
   const { p256dh, auth } = keys
   if (typeof p256dh !== 'string' || p256dh.length === 0) return { valid: false, reason: 'malformed-body' }
   if (typeof auth !== 'string' || auth.length === 0) return { valid: false, reason: 'malformed-body' }
-  if (expirationTime !== undefined && typeof expirationTime !== 'number') return { valid: false, reason: 'malformed-body' }
+  // PushSubscription.toJSON() omits expirationTime entirely in some
+  // browsers when there's no expiration, but Firefox includes it
+  // explicitly as `null` - both mean "no expiration" and must be
+  // accepted the same way as each other.
+  if (expirationTime !== undefined && expirationTime !== null && typeof expirationTime !== 'number') {
+    return { valid: false, reason: 'malformed-body' }
+  }
 
   let url: URL
   try {

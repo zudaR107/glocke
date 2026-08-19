@@ -183,6 +183,17 @@ describe('browser push APIs', () => {
       expect((await pushRepository.listSubscriptions('user-2'))[0]?.id).toBe('sub-1')
     })
 
+    it('accepts an explicit null expirationTime, matching Firefox PushSubscription.toJSON()', async () => {
+      const response = await app.request('/notifications/push/subscriptions', {
+        method: 'PUT',
+        headers: { ...USER_1_HEADERS, 'Content-Type': 'application/json' },
+        body: JSON.stringify(pushSubscriptionRequestBody({ expirationTime: null })),
+      })
+
+      expect(response.status).toBe(200)
+      expect(await pushRepository.listSubscriptions('user-1')).toHaveLength(1)
+    })
+
     it('rejects a provider host absent from the allowlist', async () => {
       const response = await app.request('/notifications/push/subscriptions', {
         method: 'PUT',
