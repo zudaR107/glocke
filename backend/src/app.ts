@@ -278,7 +278,22 @@ export function createApp(options: CreateAppOptions): Hono<ExportAuthEnv> {
     if (result === 'conflict' || result === 'limit-exceeded') {
       return context.json({ error: result === 'conflict' ? 'Endpoint already registered to another account' : 'Subscription limit exceeded' }, 409)
     }
-    return context.json({ status: result })
+    // putSubscription only reports created/updated as a bare status, not
+    // the persisted row - on an update, the existing row's own id/
+    // createdAt/lastSuccessAt are kept as-is (see push-repository.ts),
+    // not the freshly generated ones just sent above, so re-read the
+    // real row rather than echoing back what was sent. The frontend
+    // stores this response directly as a PushSubscriptionSummary
+    // (BrowserPushSettings.tsx) - returning just {status} left it with
+    // no id/providerHost/createdAt to render or to target a later delete.
+    const persisted = await options.pushRepository.findSubscriptionByEndpoint(validated.endpoint)
+    if (!persisted) return context.json({ error: 'Subscription not found after write' }, 500)
+    return context.json({
+      id: persisted.id,
+      providerHost: persisted.providerHost,
+      createdAt: persisted.createdAt,
+      lastSuccessAt: persisted.lastSuccessAt,
+    })
   })
 
   app.delete('/notifications/push/subscriptions/:id', async (context) => {

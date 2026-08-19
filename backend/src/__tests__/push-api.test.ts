@@ -30,11 +30,17 @@ import { MemoryNotificationRepository } from './helpers/repository.js'
 //     -> body validated via push-validation.ts's validatePushSubscriptionInput
 //        against pushConfig.allowedProviderHosts; owner is the verified JWT
 //        subject, any owner-shaped field in the body is ignored. 200 on
-//        create-or-update, 400 on validation failure, 409 on endpoint
-//        already owned by a different account OR the per-user cap being
-//        exceeded (both are "this write cannot be accepted as requested"
-//        conflicts - a distinct 4xx like 429 would also be defensible, but
-//        409 keeps both write-rejection cases in the same status family).
+//        create-or-update with body { id, providerHost, createdAt,
+//        lastSuccessAt } - the SAME shape GET /status's subscriptions[]
+//        entries use, since the frontend stores this response directly as
+//        one. On an update (re-subscribing an already-registered
+//        endpoint), this is the EXISTING row's own id/createdAt/
+//        lastSuccessAt, not freshly generated ones. 400 on validation
+//        failure, 409 on endpoint already owned by a different account OR
+//        the per-user cap being exceeded (both are "this write cannot be
+//        accepted as requested" conflicts - a distinct 4xx like 429 would
+//        also be defensible, but 409 keeps both write-rejection cases in
+//        the same status family).
 //   DELETE /notifications/push/subscriptions/:id
 //     -> owner-only; 404 (not 403) for another user's id, matching this
 //        platform's existing ownership-check convention; 204 idempotently.
@@ -166,6 +172,37 @@ describe('browser push APIs', () => {
       expect(subscriptions).toHaveLength(1)
       expect(subscriptions[0]?.userId).toBe('user-1')
       expect(await pushRepository.listSubscriptions('user-2')).toEqual([])
+
+      // The response body IS the persisted PushSubscriptionSummary, not a
+      // bare {status} - the frontend stores this directly to render
+      // "registered" state and to target a later DELETE by id.
+      const body = await response.json() as Record<string, unknown>
+      expect(body).toEqual({
+        id: subscriptions[0]!.id,
+        providerHost: subscriptions[0]!.providerHost,
+        createdAt: subscriptions[0]!.createdAt,
+        lastSuccessAt: null,
+      })
+      expect(body['id']).toBeTruthy()
+      expect(() => new Date(body['createdAt'] as string).toISOString()).not.toThrow()
+    })
+
+    it('returns the EXISTING id/createdAt on an update, not freshly generated ones', async () => {
+      const endpoint = pushSubscriptionRequestBody()['endpoint'] as string
+      const original = pushSubscriptionRecord({ id: 'sub-original', userId: 'user-1', endpoint, createdAt: '2020-01-01T00:00:00.000Z' })
+      pushRepository.seedSubscription(original)
+
+      const response = await app.request('/notifications/push/subscriptions', {
+        method: 'PUT',
+        headers: { ...USER_1_HEADERS, 'Content-Type': 'application/json' },
+        body: JSON.stringify(pushSubscriptionRequestBody({ endpoint })),
+      })
+
+      expect(response.status).toBe(200)
+      const body = await response.json() as Record<string, unknown>
+      expect(body['id']).toBe('sub-original')
+      expect(body['createdAt']).toBe('2020-01-01T00:00:00.000Z')
+      expect(await pushRepository.listSubscriptions('user-1')).toHaveLength(1)
     })
 
     it('returns 409 when the endpoint already belongs to a different account instead of reattaching it', async () => {

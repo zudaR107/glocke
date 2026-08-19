@@ -42,7 +42,18 @@ export class MemoryPushRepository {
     const existingByEndpoint = this.subscriptions.find((subscription) => subscription.endpoint === input.endpoint)
     if (existingByEndpoint && existingByEndpoint.userId !== input.userId) return 'conflict'
     if (existingByEndpoint) {
-      Object.assign(existingByEndpoint, input, { id: existingByEndpoint.id })
+      // Mirrors SqlitePushRepository's own update field list exactly - id,
+      // userId, endpoint, endpointHash, createdAt, and lastSuccessAt are
+      // the EXISTING row's own identity/history, never overwritten by a
+      // re-subscribe.
+      Object.assign(existingByEndpoint, {
+        p256dh: input.p256dh,
+        auth: input.auth,
+        expirationTime: input.expirationTime,
+        providerHost: input.providerHost,
+        vapidKeyId: input.vapidKeyId,
+        updatedAt: input.updatedAt,
+      })
       return 'updated'
     }
     const activeForUser = this.subscriptions.filter((subscription) => subscription.userId === input.userId).length
