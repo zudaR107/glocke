@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, ExternalLink, SlidersHorizontal } from 'lucide-react'
+import { Bell, Download, ExternalLink, SlidersHorizontal } from 'lucide-react'
 import { Button, DirectExportAction, downloadJson } from '@zudar107/schloss-ui'
 import { buildSchluesselAccountUrl } from '../../lib/authRedirect'
 import { api } from '../../lib/api'
@@ -44,6 +44,7 @@ export function SettingsPage() {
       </div>
       <div className="settings-export">
         <DirectExportAction
+          icon={<Download size={24}/>}
           title="Экспорт данных"
           description="Скачайте JSON со всеми вашими уведомлениями Glocke и их состоянием прочтения."
           actionLabel="Скачать данные"

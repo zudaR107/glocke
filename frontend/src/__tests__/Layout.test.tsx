@@ -14,6 +14,7 @@ vi.mock('@zudar107/schloss-ui', () => ({
   ),
   Footer: () => <footer />,
   ThemeToggle: () => <button type="button">Theme</button>,
+  Sidebar: () => <nav aria-label="Разделы Glocke" />,
   useUnreadNotifications,
   useAvatarUrl,
 }))
