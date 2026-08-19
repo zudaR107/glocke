@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Layout } from '../components/Layout'
 
 const useUnreadNotifications = vi.hoisted(() => vi.fn())
+const useAvatarUrl = vi.hoisted(() => vi.fn(() => null))
 const apiClient = vi.hoisted(() => ({ getAccessToken: vi.fn() }))
 
 vi.mock('@zudar107/schloss-ui', () => ({
@@ -14,6 +15,7 @@ vi.mock('@zudar107/schloss-ui', () => ({
   Footer: () => <footer />,
   ThemeToggle: () => <button type="button">Theme</button>,
   useUnreadNotifications,
+  useAvatarUrl,
 }))
 
 vi.mock('@tanstack/react-router', () => ({
