@@ -1,8 +1,12 @@
 @import "tailwindcss";
 @import "@zudar107/schloss-ui/tokens.css";
 
+/* Glocke's brand accent - same value as schlussel's, since both are
+ * auxiliary/infrastructure services (auth and notifications) sharing one
+ * visual identity distinct from the content apps (kuvert/tafel/zettel).
+ * See @zudar107/schloss-ui's README for the per-service accent contract. */
 @layer base {
-  :root { --accent: #e11d48; --accent-hover: #be123c; --accent-muted: #ffe4e6; --accent-text: #9f1239; }
+  :root { --accent: #3b82f6; --accent-hover: #2563eb; --accent-muted: #eff6ff; --accent-text: #1d4ed8; }
   *, *::before, *::after { box-sizing: border-box; }
   html, body, #root { min-height: 100%; margin: 0; }
   body { background: var(--bg-base); color: var(--text-primary); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
@@ -16,8 +20,13 @@
 .app-shell > main { min-width: 0; padding: 2rem clamp(1rem, 4vw, 3.5rem); }
 .app-shell > footer { grid-column: 2; }
 .service-nav { grid-row: 2 / 4; background: #18181b; color: #a1a1aa; padding: 1rem .75rem; display: flex; flex-direction: column; gap: 1.25rem; }
-.brand { display: flex; align-items: center; gap: .65rem; color: white; padding: 0 .5rem; letter-spacing: -.02em; }
-.brand-mark { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: var(--accent); color: white; box-shadow: 0 8px 20px rgb(225 29 72 / .28); }
+/* Left padding matches schloss-ui Header's own left inset at desktop
+ * widths (clamp(0.75rem, 3vw, 1.5rem), which sits at its 1.5rem max
+ * above ~800px viewports - the width this sidebar is actually shown at,
+ * see the @media block below) so the sidebar's brand-mark lines up under
+ * the header's logo instead of sitting ~4px to its left. */
+.brand { display: flex; align-items: center; gap: .65rem; color: white; padding: 0 .75rem; letter-spacing: -.02em; }
+.brand-mark { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: var(--accent); color: white; box-shadow: 0 8px 20px rgb(59 130 246 / .28); }
 .nav-links { display: flex; flex-direction: column; gap: .25rem; }
 .nav-links a { display: flex; align-items: center; gap: .65rem; padding: .65rem .75rem; border-radius: 9px; color: inherit; text-decoration: none; font-size: .875rem; }
 .nav-links a:hover, .nav-links a.active { background: rgb(255 255 255 / .08); color: white; }
