@@ -43,6 +43,14 @@ describe('push subscription input validation', () => {
     expect(validatePushSubscriptionInput(validBody(), ALLOWLIST)).toMatchObject({ valid: true, expirationTime: null })
   })
 
+  // Firefox's PushSubscription.toJSON() includes expirationTime explicitly
+  // as `null` when there's no expiration, rather than omitting the key -
+  // both must be accepted identically.
+  it('accepts an explicit null expirationTime the same as an absent one', () => {
+    expect(validatePushSubscriptionInput(validBody({ expirationTime: null }), ALLOWLIST))
+      .toMatchObject({ valid: true, expirationTime: null })
+  })
+
   it.each([
     ['Mozilla', 'https://updates.push.services.mozilla.com/wpush/v2/xyz', 'updates.push.services.mozilla.com'],
     ['Apple', 'https://web.push.apple.com/QA1b2C3', 'web.push.apple.com'],
