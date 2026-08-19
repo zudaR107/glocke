@@ -185,6 +185,12 @@ export class SqliteNotificationRepository implements NotificationRepository {
     )).run().changes === 1
   }
 
+  async deleteAllNotifications(userId: string): Promise<number> {
+    return this.database.delete(notifications).where(
+      eq(notifications.userId, userId),
+    ).run().changes
+  }
+
   async listActiveSubscriptions(userId: string): Promise<PushSubscriptionRecord[]> {
     return this.database.select().from(pushSubscriptions)
       .where(eq(pushSubscriptions.userId, userId))

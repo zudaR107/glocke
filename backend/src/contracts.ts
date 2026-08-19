@@ -93,6 +93,7 @@ export interface NotificationRepository {
   markRead(userId: string, notificationId: string, readAt: string): Promise<NotificationRecord | null>
   markAllRead(userId: string, readAt: string): Promise<number>
   deleteNotification(userId: string, notificationId: string): Promise<boolean>
+  deleteAllNotifications(userId: string): Promise<number>
   listActiveSubscriptions(userId: string): Promise<PushSubscriptionRecord[]>
   materializeNotification(input: {
     source: string

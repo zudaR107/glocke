@@ -49,6 +49,10 @@ registry.registerPath({
   request: { params: z.object({ id: z.string() }) }, responses: { 204: { description: 'Deleted' }, 404: { description: 'Not found' } },
 })
 registry.registerPath({
+  method: 'delete', path: '/notifications', tags: ['notifications'], summary: 'Delete all caller-owned notifications', security: bearer,
+  responses: { 200: { description: 'Deleted count', ...json(z.object({ deleted: z.number().int().nonnegative() })) } },
+})
+registry.registerPath({
   method: 'get', path: '/exports/me', tags: ['exports'], summary: 'Export caller-owned Glocke data',
   description: 'Synchronous direct Glocke JSON endpoint used by Settings and as an input to Schlüssel\'s separate asynchronous ZIP collector. Contains every subject-owned user-visible notification and read state without pagination, read when this request runs; it is not a cross-service point-in-time snapshot. Accepts an access token or a JWKS-verified delegation with the exact issuer, token_use=export, single hof-service:glocke audience, data:export scope, nonempty subject/job/token IDs, and a non-expired numeric expiry. Delegations are rejected by ordinary routes and the subject comes only from the verified principal. Inbox envelopes/hashes, suppressed events, worker leases, local user rows, credentials, runtime configuration, logs, other users, and other services are excluded. The response is private, no-store, and nosniff.',
   security: [{ bearerAuth: [] }, { exportDelegationAuth: [] }],

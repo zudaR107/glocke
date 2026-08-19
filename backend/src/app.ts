@@ -217,6 +217,9 @@ export function createApp(options: CreateAppOptions): Hono<ExportAuthEnv> {
     const deleted = await options.repository.deleteNotification(context.get('user').id, context.req.param('id'))
     return deleted ? context.body(null, 204) : context.json({ error: 'Not found' }, 404)
   })
+  app.delete('/notifications', async (context) => context.json({
+    deleted: await options.repository.deleteAllNotifications(context.get('user').id),
+  }))
 
   const createPushSubscriptionId = options.createPushSubscriptionId ?? (() => crypto.randomUUID())
 

@@ -53,3 +53,7 @@ export async function markAllNotificationsRead(): Promise<number> {
 export function deleteNotification(id: string): Promise<void> {
   return api.delete(`/notifications/${encodeURIComponent(id)}`)
 }
+
+export async function deleteAllNotifications(): Promise<number> {
+  return (await api.delete<{ deleted: number }>('/notifications')).deleted
+}

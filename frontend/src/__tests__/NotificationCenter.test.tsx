@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NotificationCenter } from '../features/notifications/NotificationCenter'
 import {
   getUnreadCount,
+  deleteAllNotifications,
   deleteNotification,
   listNotifications,
   markAllNotificationsRead,
@@ -24,6 +25,7 @@ vi.mock('../lib/api', () => ({
   markNotificationRead: vi.fn(),
   markAllNotificationsRead: vi.fn(),
   deleteNotification: vi.fn(),
+  deleteAllNotifications: vi.fn(),
 }))
 
 const unreadNotification: Notification = {
@@ -55,6 +57,7 @@ describe('NotificationCenter', () => {
     vi.mocked(markNotificationRead).mockReset()
     vi.mocked(markAllNotificationsRead).mockReset()
     vi.mocked(deleteNotification).mockReset()
+    vi.mocked(deleteAllNotifications).mockReset()
     invalidateNotificationUnreadCount.mockReset()
     vi.mocked(getUnreadCount).mockResolvedValue(0)
   })
@@ -198,10 +201,43 @@ describe('NotificationCenter', () => {
     expect(invalidateNotificationUnreadCount).toHaveBeenCalledOnce()
   })
 
+  it('deletes all notifications and clears the list, even when none are unread', async () => {
+    const user = userEvent.setup()
+    const mutation = deferred<number>()
+    const second = { ...unreadNotification, id: 'notification-2', eventId: 'evt-2', title: 'Second event', readAt: '2026-08-07T10:05:00.000Z' }
+    vi.mocked(listNotifications).mockResolvedValue({ items: [unreadNotification, second], nextCursor: null })
+    vi.mocked(getUnreadCount).mockResolvedValue(1)
+    vi.mocked(deleteAllNotifications).mockReturnValue(mutation.promise)
+
+    render(<NotificationCenter />)
+    await user.click(await screen.findByRole('button', { name: /delete all notifications/i }))
+
+    expect(deleteAllNotifications).toHaveBeenCalledOnce()
+    expect(invalidateNotificationUnreadCount).not.toHaveBeenCalled()
+    expect(screen.getByRole('article', { name: 'Release is due' })).toBeInTheDocument()
+
+    mutation.resolve(2)
+    await waitFor(() => expect(screen.queryByText(/no notifications yet/i)).toBeInTheDocument())
+    expect(screen.queryByLabelText('Unread notifications')).not.toBeInTheDocument()
+    expect(invalidateNotificationUnreadCount).toHaveBeenCalledOnce()
+  })
+
+  it('offers "delete all" once there are items, independent of "mark all as read" (only shown while something is unread)', async () => {
+    const allRead = { ...unreadNotification, readAt: '2026-08-07T10:05:00.000Z' }
+    vi.mocked(listNotifications).mockResolvedValue({ items: [allRead], nextCursor: null })
+    vi.mocked(getUnreadCount).mockResolvedValue(0)
+
+    render(<NotificationCenter />)
+
+    expect(await screen.findByRole('button', { name: /delete all notifications/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /mark all as read/i })).not.toBeInTheDocument()
+  })
+
   it.each([
     ['read one', /mark release is due as read/i, markNotificationRead],
     ['read all', /mark all as read/i, markAllNotificationsRead],
     ['delete', 'Удалить «Release is due»', deleteNotification],
+    ['delete all', /delete all notifications/i, deleteAllNotifications],
   ] as const)('does not alter unread state or publish invalidation when %s fails', async (_name, buttonName, request) => {
     const user = userEvent.setup()
     vi.mocked(listNotifications).mockResolvedValue({ items: [unreadNotification], nextCursor: null })
