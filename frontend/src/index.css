@@ -60,7 +60,8 @@
 .info-card { display: flex; gap: 1rem; }
 .info-card > svg { color: var(--accent); flex: none; }
 .info-card h2, .prose-card h2 { font-size: 1rem; margin: 0 0 .45rem; }
-.info-card p, .prose-card p { margin: 0; color: var(--text-secondary); line-height: 1.6; font-size: .875rem; }
+.info-card p, .prose-card p { margin: 0 0 .75rem; color: var(--text-secondary); line-height: 1.6; font-size: .875rem; }
+.info-card p:last-child, .prose-card p:last-child { margin-bottom: 0; }
 .roadmap-note { margin-top: 1.5rem; background: var(--accent-muted); color: var(--accent-text); line-height: 1.55; }
 .settings-export { margin-top: 1.5rem; }
 .docs-page { background: white; min-height: 500px; }
