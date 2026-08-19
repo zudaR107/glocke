@@ -132,20 +132,23 @@ seconds.
 
 `backend/src/event-registry.ts` is the single source of truth for every `(source, type)`
 pair this deployment accepts: it drives payload validation at intake, Russian
-rendering at processing, the four `oneOf` request-body contracts in
+rendering at processing, the seven `oneOf` request-body contracts in
 `GET /openapi.json`, and (via `GLOCKE_EVENT_SOURCES`) which producer secrets
 `loadConfig` will even accept. There is no producer-rendered fallback — an
 envelope whose type isn't registered, or whose source doesn't own that type,
 is rejected with `400` before its payload is even looked at, and a payload
 carrying `title`/`body`/`actionUrl` is always rejected (every payload schema
-is `.strict()`; presentation is Glocke's alone). The four currently
+is `.strict()`; presentation is Glocke's alone). The seven currently
 registered events:
 
 | Type | Source | Payload | Rendered action |
 |---|---|---|---|
 | `schlussel.security.password_changed.v1` | `schlussel` | `recipientId` | `/settings` |
 | `kuvert.goal.completed.v1` | `kuvert` | `recipientId`, `goalName` | `<KUVERT_ORIGIN>/goals` |
+| `kuvert.debt.paid_off.v1` | `kuvert` | `recipientId`, `counterparty` | `<KUVERT_ORIGIN>/debts` |
+| `kuvert.envelope.overdrawn.v1` | `kuvert` | `recipientId`, `envelopeName` | `<KUVERT_ORIGIN>/budget` |
 | `tafel.task.due.v1` | `tafel` | `recipientId`, `taskTitle`, `dueDate`, `overdue` | `<TAFEL_ORIGIN>/tasks` |
+| `tafel.project.completed.v1` | `tafel` | `recipientId`, `projectName` | `<TAFEL_ORIGIN>/projects` |
 | `zettel.note.backlink_added.v1` | `zettel` | `recipientId`, `sourceTitle`, `targetTitle` | none |
 
 ## Local development

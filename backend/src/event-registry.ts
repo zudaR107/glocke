@@ -49,6 +49,39 @@ const goalCompleted = entry({
   }),
 })
 
+const debtPaidOff = entry({
+  type: 'kuvert.debt.paid_off.v1',
+  source: 'kuvert',
+  payloadSchema: z.object({ recipientId, counterparty: shortText }).strict(),
+  render: (payload) => ({
+    title: 'Долг закрыт',
+    body: `Долг «${payload.counterparty}» отмечен как закрытый.`,
+    actionUrl: '/debts',
+  }),
+})
+
+const envelopeOverdrawn = entry({
+  type: 'kuvert.envelope.overdrawn.v1',
+  source: 'kuvert',
+  payloadSchema: z.object({ recipientId, envelopeName: shortText }).strict(),
+  render: (payload) => ({
+    title: 'Конверт ушёл в минус',
+    body: `Конверт «${payload.envelopeName}» превысил доступный бюджет.`,
+    actionUrl: '/budget',
+  }),
+})
+
+const projectCompleted = entry({
+  type: 'tafel.project.completed.v1',
+  source: 'tafel',
+  payloadSchema: z.object({ recipientId, projectName: shortText }).strict(),
+  render: (payload) => ({
+    title: 'Проект завершён',
+    body: `Все задачи в проекте «${payload.projectName}» выполнены.`,
+    actionUrl: '/projects',
+  }),
+})
+
 const taskDue = entry({
   type: 'tafel.task.due.v1',
   source: 'tafel',
@@ -87,7 +120,7 @@ const backlinkAdded = entry({
 })
 
 export const eventRegistry: readonly EventRegistryEntry[] = [
-  passwordChanged, goalCompleted, taskDue, backlinkAdded,
+  passwordChanged, goalCompleted, debtPaidOff, envelopeOverdrawn, taskDue, projectCompleted, backlinkAdded,
 ]
 
 export const eventRegistryByType: ReadonlyMap<string, EventRegistryEntry> = new Map(
