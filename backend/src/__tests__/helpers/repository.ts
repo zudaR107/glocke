@@ -138,6 +138,14 @@ export class MemoryNotificationRepository implements NotificationRepository {
     return true
   }
 
+  async deleteAllNotifications(userId: string): Promise<number> {
+    const remaining = this.notifications.filter((notification) => notification.userId !== userId)
+    const deleted = this.notifications.length - remaining.length
+    this.notifications.length = 0
+    this.notifications.push(...remaining)
+    return deleted
+  }
+
   async listActiveSubscriptions(userId: string): Promise<PushSubscriptionRecord[]> {
     return structuredClone(this.pushSubscriptions.filter((subscription) => subscription.userId === userId))
   }

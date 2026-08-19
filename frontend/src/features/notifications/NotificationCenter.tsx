@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Bell, CheckCheck, ExternalLink, RefreshCw, Trash2 } from 'lucide-react'
 import { Badge, Button, EmptyState, invalidateNotificationUnreadCount } from '@zudar107/schloss-ui'
 import {
+  deleteAllNotifications,
   deleteNotification,
   getUnreadCount,
   listNotifications,
@@ -56,6 +57,18 @@ export function NotificationCenter() {
       invalidateNotificationUnreadCount()
     } catch {
       setMutationError('Не удалось отметить все уведомления прочитанными.')
+    }
+  }
+
+  async function removeAll() {
+    try {
+      await deleteAllNotifications()
+      setItems([])
+      setNextCursor(null)
+      setUnread(0)
+      invalidateNotificationUnreadCount()
+    } catch {
+      setMutationError('Не удалось удалить все уведомления.')
     }
   }
 
@@ -117,6 +130,11 @@ export function NotificationCenter() {
           {unread > 0 && (
             <Button variant="secondary" onClick={() => void markAllRead()} aria-label="Mark all as read">
               <CheckCheck size={16} />Прочитать все
+            </Button>
+          )}
+          {items.length > 0 && (
+            <Button variant="secondary" onClick={() => void removeAll()} aria-label="Delete all notifications">
+              <Trash2 size={16} />Удалить все
             </Button>
           )}
         </div>
