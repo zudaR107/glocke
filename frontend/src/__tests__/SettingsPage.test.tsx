@@ -33,6 +33,17 @@ const snapshot = {
   },
 }
 
+describe('SettingsPage layout', () => {
+  it('keeps "Открыть настройки аккаунта" inside its own info card, not floating outside it', () => {
+    render(<SettingsPage />)
+
+    const button = screen.getByRole('button', { name: /открыть настройки аккаунта/i })
+    const card = button.closest('.info-card')
+    expect(card).not.toBeNull()
+    expect(card).toHaveTextContent('Способы уведомлений')
+  })
+})
+
 describe('SettingsPage data export', () => {
   beforeEach(() => {
     vi.mocked(api.get).mockReset()

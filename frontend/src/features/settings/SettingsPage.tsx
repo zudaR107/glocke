@@ -27,11 +27,14 @@ export function SettingsPage() {
       <div className="eyebrow">Предпочтения</div><h1>Настройки</h1>
       <div className="info-card">
         <SlidersHorizontal size={24}/>
-        <div><h2>Способы уведомлений</h2><p>Получение уведомлений в приложении управляется в общем профиле Schlüssel. Glocke проверяет актуальное значение перед обработкой каждого события.</p></div>
+        <div>
+          <h2>Способы уведомлений</h2>
+          <p>Получение уведомлений в приложении управляется в общем профиле Schlüssel. Glocke проверяет актуальное значение перед обработкой каждого события.</p>
+          <Button variant="primary" onClick={() => { location.href = buildSchluesselAccountUrl('/settings') }}>
+            Открыть настройки аккаунта <ExternalLink size={16}/>
+          </Button>
+        </div>
       </div>
-      <Button variant="primary" onClick={() => { location.href = buildSchluesselAccountUrl('/settings') }}>
-        Открыть настройки аккаунта <ExternalLink size={16}/>
-      </Button>
       <div className="info-card">
         <Bell size={24}/>
         <div>

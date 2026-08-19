@@ -3,7 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Cache-busted query string, not just a path change - browsers cache
+         favicons unusually aggressively, often ignoring normal page
+         reloads/cache-clears entirely, so a same-URL asset update (the
+         rose-to-blue recolor) never got picked up for already-visited
+         users. Bump this suffix again if the icon ever needs to change. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2" />
     <meta name="theme-color" content="#3b82f6" />
     <title>Glocke — уведомления Hof</title>
   </head>
