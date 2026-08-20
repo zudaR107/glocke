@@ -1,5 +1,6 @@
 import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect } from '@tanstack/react-router'
 import type { QueryClient } from '@tanstack/react-query'
+import { NotFoundPage } from '@zudar107/schloss-ui'
 import { Layout } from '../components/Layout'
 import { NotificationCenter } from '../features/notifications/NotificationCenter'
 import { SettingsPage } from '../features/settings/SettingsPage'
@@ -10,7 +11,10 @@ import { getAccessToken } from '../lib/api'
 import { buildSchluesselLoginUrl } from '../lib/authRedirect'
 import { queryClient } from '../lib/queryClient'
 
-const root = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: () => <Outlet /> })
+const root = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  component: () => <Outlet />,
+  notFoundComponent: () => <NotFoundPage homeHref="/" />,
+})
 const callback = createRoute({ getParentRoute: () => root, path: '/auth/callback', component: AuthCallbackPage })
 const protectedRoute = createRoute({
   getParentRoute: () => root,
