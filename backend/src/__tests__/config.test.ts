@@ -11,6 +11,8 @@ const LOCAL_FRONTEND_ORIGINS = [
   'https://tafel.localhost',
   'https://zettel.localhost',
   'https://glocke.localhost',
+  'https://schrank.localhost',
+  'https://herold.localhost',
 ]
 
 function validEnv(): NodeJS.ProcessEnv {
